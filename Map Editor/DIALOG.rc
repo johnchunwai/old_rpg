@@ -1,0 +1,241 @@
+//Microsoft Developer Studio generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "afxres.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// English (Canada) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENC)
+#ifdef _WIN32
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_CAN
+#pragma code_page(1252)
+#endif //_WIN32
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Menu
+//
+
+MYMENU MENU DISCARDABLE 
+BEGIN
+    POPUP "&File"
+    BEGIN
+        MENUITEM "&Open",                       IDM_OPEN
+        MENUITEM "&Save",                       IDM_SAVE
+        MENUITEM "E&xit",                       IDM_EXIT
+    END
+    POPUP "&Edit"
+    BEGIN
+        MENUITEM "&Custom",                     IDM_CUSTOM
+        MENUITEM "&Modify",                     IDM_MODIFY
+        POPUP "&Insert"
+        BEGIN
+            MENUITEM "&Row",                        IDM_INSERTROW
+            MENUITEM "&Column",                     IDM_INSERTCOL
+        END
+        POPUP "&Delete"
+        BEGIN
+            MENUITEM "&Row",                        IDM_DELETEROW
+            MENUITEM "&Column",                     IDM_DELETECOL
+        END
+        MENUITEM "&Not Modifying",              IDM_NONEACTIVE
+    END
+    MENUITEM "&Goto",                       IDM_GOTO
+    MENUITEM "&Landscape",                  IDM_LANDSCAPE
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+FILEOPENDLG DIALOG DISCARDABLE  0, 0, 186, 93
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "File Open"
+FONT 8, "MS Sans Serif"
+BEGIN
+    DEFPUSHBUTTON   "OPEN",IDOK,129,41,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,129,65,50,14
+    LTEXT           "File name :",IDC_STATIC,14,14,35,8
+    EDITTEXT        IDC_EDIT1,17,33,108,14,ES_AUTOHSCROLL
+END
+
+CUSTOMDLG DIALOG DISCARDABLE  0, 0, 186, 93
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Customize Range Modify"
+FONT 8, "MS Sans Serif"
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,67,72,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,129,72,50,14
+    LTEXT           "X :",IDC_STATIC,7,6,10,8
+    LTEXT           "Y :",IDC_STATIC,7,31,10,8
+    EDITTEXT        IDC_EDIT1,37,18,40,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT2,37,38,40,14,ES_AUTOHSCROLL
+    LISTBOX         IDC_LIST2,7,60,48,26,LBS_SORT | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "From :",IDC_STATIC,13,20,20,8
+    LTEXT           "From :",IDC_STATIC,13,40,20,8
+    LTEXT           "To :",IDC_STATIC,83,20,14,8
+    LTEXT           "To :",IDC_STATIC,85,41,14,8
+    EDITTEXT        IDC_EDIT3,103,18,40,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT4,104,39,40,14,ES_AUTOHSCROLL
+END
+
+LANDSCAPEDLG DIALOG DISCARDABLE  0, 0, 186, 93
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Landscape"
+FONT 8, "MS Sans Serif"
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,129,39,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,129,72,50,14
+    LISTBOX         IDC_LIST1,24,38,75,18,LBS_SORT | LBS_NOINTEGRALHEIGHT | 
+                    WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Pick one landscape :",IDC_STATIC,15,14,68,8
+END
+
+GOTODLG DIALOG DISCARDABLE  0, 0, 146, 91
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Goto"
+FONT 8, "MS Sans Serif"
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,83,44,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,83,64,50,14
+    LTEXT           "Set upper left corner to :",IDC_STATIC,7,7,77,8
+    LTEXT           "X :",IDC_STATIC,7,29,10,8
+    LTEXT           "Y :",IDC_STATIC,7,48,10,8
+    EDITTEXT        IDC_EDIT1,25,27,40,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT2,25,45,40,14,ES_AUTOHSCROLL
+END
+
+INSERTDLG DIALOG DISCARDABLE  0, 0, 128, 69
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Insert Dialog"
+FONT 8, "MS Sans Serif"
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,37,41,50,14
+    LISTBOX         IDC_LIST1,56,18,48,12,LBS_SORT | LBS_NOINTEGRALHEIGHT | 
+                    WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Insert type :",IDC_STATIC,14,15,38,8
+END
+
+FILESAVEDLG DIALOG DISCARDABLE  0, 0, 186, 93
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "File Save"
+FONT 8, "MS Sans Serif"
+BEGIN
+    PUSHBUTTON      "Cancel",IDCANCEL,129,66,50,14
+    LTEXT           "File name :",IDC_STATIC,14,14,35,8
+    EDITTEXT        IDC_EDIT1,17,33,108,14,ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "SAVE",IDOK,129,41,50,14
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO DISCARDABLE 
+BEGIN
+    "FILEOPENDLG", DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 179
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 86
+    END
+
+    "CUSTOMDLG", DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 179
+        TOPMARGIN, 6
+        BOTTOMMARGIN, 86
+    END
+
+    "LANDSCAPEDLG", DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 179
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 86
+    END
+
+    "GOTODLG", DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 138
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 84
+    END
+
+    "INSERTDLG", DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 121
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 62
+    END
+
+    "FILESAVEDLG", DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 179
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 86
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "#include ""afxres.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+#endif    // English (Canada) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+
