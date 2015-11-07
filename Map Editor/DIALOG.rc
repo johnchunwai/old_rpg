@@ -52,6 +52,7 @@ BEGIN
     END
     MENUITEM "&Goto",                       IDM_GOTO
     MENUITEM "&Landscape",                  IDM_LANDSCAPE
+    MENUITEM "&Help",                       IDM_HELP
 END
 
 

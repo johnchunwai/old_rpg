@@ -43,10 +43,12 @@
 
 #define DISPLAY_OFFAMOUNT	8
 
-#define NUM_OF_LANDSCAPES	3
-#define GRASS	0
-#define WATER	1
-#define VILLAGE 2
+#define NUM_OF_LANDSCAPES	5
+#define GRASS		0
+#define WATER		4
+#define VILLAGE		3
+#define POISONLAND	1
+#define RESTORELAND	2
 
 // MACROS /////////////////////////////////////////////////
 
@@ -99,7 +101,9 @@ RECT char_area;
 
 DWORD backgroundIndex = GRASS;
 
-int		charX = 23, charY = 17;	// init position of main character
+char szWorldMapFile[80] = "..\\Map\\worldMap.dat";
+
+int		charX = 39, charY = 29;	// init position of main character
 int		charDirection = STAY;	// init character direction of moving
 const int repCount = CELL_WIDTH/DISPLAY_OFFAMOUNT;
 int worldMapOffset[2] = {(charX-7), (charY-5)};
@@ -107,27 +111,6 @@ int firstRun = 1;
 int worldMapWidth, worldMapHeight;
 int **worldMap;
 // WINX GAME PROGRAMMING CONSOLE FUNCTIONS ////////////////
-
-int WriteMapToFile(int **map, LPSTR szFileName, int width, int height)
-{
-	int i;
-	FILE *fp;
-	if((fp = fopen(szFileName, "w"))==NULL)
-		return(0);
-	fprintf(fp,"%d %d", width, height);
-
-	for (int j=0; j<height; j++)
-	{
-		fprintf(fp,"\n");
-		for (i=0; i<width-1; i++)
-			fprintf(fp,"%d ", map[i][j]);
-		fprintf(fp, "%d", map[width-1][j]);
-	}
-
-	fclose(fp);
-	
-	return(1);
-}
 
 int ReadMapFromFile(int **&map, LPSTR szFileName, int &width, int &height)
 {
@@ -142,11 +125,6 @@ int ReadMapFromFile(int **&map, LPSTR szFileName, int &width, int &height)
 	map = new int*[width];
 	for(i=0; i<width; i++)
 		map[i] = new int[height];
-/*
-	map = new int*[width];
-	for(i=0; i<width; i++)
-		map[i] = new int[height];
-		*/
 
 	for (int j=0; j<height; j++)
 	{
@@ -526,57 +504,10 @@ int Game_Init(void *parms)
 {
 // this function is where you do all the initialization 
 // for your game
-	int i;
-	int j;
 	
 	// try outputing the map to a file
-	if(!ReadMapFromFile(worldMap, "e:\\RPG V1.0\\Map\\worldMap.dat", worldMapWidth, worldMapHeight))
+	if(!ReadMapFromFile(worldMap, szWorldMapFile, worldMapWidth, worldMapHeight))
 		return(0);
-
-//	worldMapWidth = 48;
-//	worldMapHeight = 36;
-
-/*	worldMap = new int*[48];
-	for(i=0; i<48; i++)
-		worldMap[i] = new int[36];
-*/
-/*	for (i = 0; i<48; i++)
-	{
-		for (j=0; j<36; j++)
-		{
-			worldMap[i][j] = GRASS;
-		}
-	}
-	for(i=16; i<19; i++)
-	{
-		for(j=17; j<21; j++)
-			worldMap[i][j] = WATER;
-	}
-	for(i=23;i<28;i++)
-	{
-		for(j = 10; j<14; j++)
-			worldMap[i][j] = WATER;
-	}
-	for(i=0; i<3; i++)
-	{
-		for(j=0;j<3;j++)
-			worldMap[i][j] = WATER;
-		for(j=35; j>32; j--)
-			worldMap[i][j] = WATER;
-	}
-	for(i=47; i>44; i--)
-	{
-		for(j=0;j<3;j++)
-			worldMap[i][j] = WATER;
-		for(j=35; j>32; j--)
-			worldMap[i][j] = WATER;
-	}
-	worldMap[32][24] = VILLAGE;
-*/
-
-/*	if(!WriteMapToFile(worldMap, "e:\\RPG V1.0\\Map\\worldMap.dat", worldMapWidth, worldMapHeight))
-		return(0);
-*/
 
 	char_area.top = 200;
 	char_area.left = 280;
@@ -636,13 +567,17 @@ int Game_Init(void *parms)
 //	lpddsgrass->SetColorKey(DDCKEY_SRCBLT, &key);
 
 	/////////////// LOADING BITMAPS //////////////////////////
-	if(!LoadImage(lpddscharacter, "e:\\RPG V1.0\\Bitmaps\\Characters\\RPGmainChar.bmp",0))
+	if(!LoadImage(lpddscharacter, "..\\Bitmaps\\Characters\\RPGmainChar.bmp",0))
 		return(0);
-	if(!LoadImage(lpddsgrass, "e:\\RPG V1.0\\Bitmaps\\Landscapes\\grassLand.bmp",GRASS))
+	if(!LoadImage(lpddsgrass, "..\\Bitmaps\\Landscapes\\grassLand.bmp",GRASS))
 		return(0);
-	if(!LoadImage(lpddsgrass, "e:\\RPG V1.0\\Bitmaps\\Landscapes\\water.bmp",WATER))
+	if(!LoadImage(lpddsgrass, "..\\Bitmaps\\Landscapes\\water.bmp",WATER))
 		return(0);
-	if(!LoadImage(lpddsgrass, "e:\\RPG V1.0\\Bitmaps\\Landscapes\\village.bmp",VILLAGE))
+	if(!LoadImage(lpddsgrass, "..\\Bitmaps\\Landscapes\\village.bmp",VILLAGE))
+		return(0);
+	if(!LoadImage(lpddsgrass, "..\\Bitmaps\\Landscapes\\poisonLand.bmp",POISONLAND))
+		return(0);
+	if(!LoadImage(lpddsgrass, "..\\Bitmaps\\Landscapes\\restoreLand.bmp",RESTORELAND))
 		return(0);
 
 	RECT cliplist[1] = {{0,0,SCREEN_WIDTH, SCREEN_HEIGHT}};
@@ -759,8 +694,8 @@ if (!(hwnd = CreateWindow(WINDOW_CLASS_NAME, // class
 						  "WinX Game Console",	 // title
 						  WS_POPUP | WS_VISIBLE,
 					 	  0,0,	   // x,y
-						  WINDOW_WIDTH,  // width
-                          WINDOW_HEIGHT, // height
+						  SCREEN_WIDTH,  // width
+                          SCREEN_HEIGHT, // height
 						  NULL,	   // handle to parent 
 						  NULL,	   // handle to menu
 						  hinstance,// instance

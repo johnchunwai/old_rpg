@@ -26,10 +26,12 @@
 #define STAY	0
 
 #define CELLWIDTH	40
-#define LANDSCAPENUM 3
+#define LANDSCAPENUM 5
 #define GRASS		0
-#define WATER		1
-#define VILLAGE		2
+#define WATER		4
+#define VILLAGE		3
+#define POISONLAND	1
+#define RESTORELAND	2
 
 #define NONEACTIVE	0
 #define MODIFY		1
@@ -58,12 +60,12 @@ HINSTANCE hInst;
 
 // GLOBAL VARIABLES
 HDC hdc, memDC;
-HBITMAP hGrass, hWater, hVillage;
+HBITMAP hGrass, hWater, hVillage, hPoisonLand, hRestoreLand;
 HWND	hWnd;
 
 char    buf[80];
 char	szFileName[80];
-char	*sourceDir = "e:\\RPG V1.0\\Map\\";
+char	*sourceDir = "..\\Map\\";
 
 int **editMap;
 int mapWidth=0, mapHeight=0;
@@ -182,6 +184,16 @@ int DrawMap(int left, int top)
 				BitBlt(hdc, ((i-left)*CELLWIDTH), ((j-top)*CELLWIDTH),
 					CELLWIDTH, CELLWIDTH, memDC, 0, 0, SRCCOPY);
 				break;
+			case POISONLAND:
+				SelectObject(memDC, hPoisonLand);
+				BitBlt(hdc, ((i-left)*CELLWIDTH), ((j-top)*CELLWIDTH),
+					CELLWIDTH, CELLWIDTH, memDC, 0, 0, SRCCOPY);
+				break;
+			case RESTORELAND:
+				SelectObject(memDC, hRestoreLand);
+				BitBlt(hdc, ((i-left)*CELLWIDTH), ((j-top)*CELLWIDTH),
+					CELLWIDTH, CELLWIDTH, memDC, 0, 0, SRCCOPY);
+				break;
 			}
 		}
 	}
@@ -270,6 +282,17 @@ int AnimateMap()
 					BitBlt(hdc, i, j,
 						CELLWIDTH, CELLWIDTH, memDC, 0, 0, SRCCOPY);
 					break;
+				case POISONLAND:
+					SelectObject(memDC, hPoisonLand);
+					BitBlt(hdc, i, j,
+						CELLWIDTH, CELLWIDTH, memDC, 0, 0, SRCCOPY);
+					break;
+				case RESTORELAND:
+					SelectObject(memDC, hRestoreLand);
+					BitBlt(hdc, i, j,
+						CELLWIDTH, CELLWIDTH, memDC, 0, 0, SRCCOPY);
+					break;
+
 				}
 			}
 		}
@@ -445,13 +468,19 @@ int WINAPI WinMain(HINSTANCE hThisInst, HINSTANCE hPrevInst,
 	hInst = hThisInst;
 	hWnd = hwnd;
 
-	hGrass = (HBITMAP)LoadImage(NULL, "e:\\RPG V1.0\\Bitmaps\\Landscapes\\grassLand.bmp",
+	hGrass = (HBITMAP)LoadImage(NULL, "..\\Bitmaps\\Landscapes\\grassLand.bmp",
 		IMAGE_BITMAP, 40,
 		40, LR_LOADFROMFILE | LR_CREATEDIBSECTION);
-	hWater = (HBITMAP)LoadImage(NULL, "e:\\RPG V1.0\\Bitmaps\\Landscapes\\water.bmp",
+	hWater = (HBITMAP)LoadImage(NULL, "..\\Bitmaps\\Landscapes\\water.bmp",
 		IMAGE_BITMAP, 40,
 		40, LR_LOADFROMFILE | LR_CREATEDIBSECTION);
-	hVillage = (HBITMAP)LoadImage(NULL, "e:\\RPG V1.0\\Bitmaps\\Landscapes\\village.bmp",
+	hVillage = (HBITMAP)LoadImage(NULL, "..\\Bitmaps\\Landscapes\\village.bmp",
+		IMAGE_BITMAP, 40,
+		40, LR_LOADFROMFILE | LR_CREATEDIBSECTION);
+	hPoisonLand = (HBITMAP)LoadImage(NULL, "..\\Bitmaps\\Landscapes\\poisonLand.bmp",
+		IMAGE_BITMAP, 40,
+		40, LR_LOADFROMFILE | LR_CREATEDIBSECTION);
+	hRestoreLand = (HBITMAP)LoadImage(NULL, "..\\Bitmaps\\Landscapes\\restoreLand.bmp",
 		IMAGE_BITMAP, 40,
 		40, LR_LOADFROMFILE | LR_CREATEDIBSECTION);
 
@@ -519,6 +548,11 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
 				break;
 			case IDM_GOTO:
 				DialogBox(hInst, "GOTODLG", hwnd, (FARPROC)GotoDlg);
+				break;
+			case IDM_HELP:
+				sprintf(buf, "Map Width = %d; Map Height = %d\nUpperleft Corner = {%d, %d}",
+					mapWidth, mapHeight, upperLeftCorner[0], upperLeftCorner[1]);
+				MessageBox(hWnd, buf, "Help", MB_OK);
 				break;
 			}
 			break;
@@ -673,6 +707,7 @@ BOOL CALLBACK FileOpenDlg(HWND hdwnd, UINT message,
 BOOL CALLBACK FileSaveDlg(HWND hdwnd, UINT message,
 					 WPARAM wParam, LPARAM lParam)
 {
+	int response;
 	switch(message)
 	{
 		case WM_INITDIALOG:	// initialize list box
@@ -682,11 +717,16 @@ BOOL CALLBACK FileSaveDlg(HWND hdwnd, UINT message,
 			{
 				case IDOK:	/* edit box OK button selected */
 					/* display contents of the edit box */
-					GetDlgItemText(hdwnd, IDC_EDIT1, buf, 80);
-					strcpy(szFileName, sourceDir);
-					strcat(szFileName, buf);
-					WriteMapToFile(editMap, szFileName, mapWidth, mapHeight);
-					InvalidateRect(hWnd, NULL, TRUE);
+					response = MessageBox(hWnd, "Are u sure u wanna save?",
+						"File Save Confirmation", MB_OKCANCEL);
+					if(response==IDOK)
+					{
+						GetDlgItemText(hdwnd, IDC_EDIT1, buf, 80);
+						strcpy(szFileName, sourceDir);
+						strcat(szFileName, buf);
+						WriteMapToFile(editMap, szFileName, mapWidth, mapHeight);
+						InvalidateRect(hWnd, NULL, TRUE);
+					}
 					EndDialog(hdwnd, 0);
 					return 1;
 				case IDCANCEL:
@@ -712,6 +752,11 @@ BOOL CALLBACK CustomDlg(HWND hdwnd, UINT message,
 							   LB_ADDSTRING, 0, (LPARAM)"Water");
 			SendDlgItemMessage(hdwnd, IDC_LIST2,
 							   LB_ADDSTRING, 0, (LPARAM)"Village");
+			SendDlgItemMessage(hdwnd, IDC_LIST2,
+							   LB_ADDSTRING, 0, (LPARAM)"Poison land");
+			SendDlgItemMessage(hdwnd, IDC_LIST2,
+							   LB_ADDSTRING, 0, (LPARAM)"Restore land");
+
 			return 1;
 		case WM_COMMAND:
 			switch(LOWORD(wParam))
@@ -720,8 +765,8 @@ BOOL CALLBACK CustomDlg(HWND hdwnd, UINT message,
 					if (HIWORD(wParam) == LBN_DBLCLK) {
 						land = SendDlgItemMessage(hdwnd, IDC_LIST2,
 											   LB_GETCURSEL, 0, 0L); // get index
-						sprintf(buf, "Index in list is: %d", land);
-						MessageBox(hdwnd, buf, "Selection Made", MB_OK);
+//						sprintf(buf, "Index in list is: %d", land);
+//						MessageBox(hdwnd, buf, "Selection Made", MB_OK);
 					}
 					return 1;
 
@@ -738,13 +783,6 @@ BOOL CALLBACK CustomDlg(HWND hdwnd, UINT message,
 
 					land = SendDlgItemMessage(hdwnd, IDC_LIST2,
 										   LB_GETCURSEL, 0, 0L); // get index
-					if (land == 1)
-						land = 2;
-					else
-					{
-						if(land == 2)
-							land = 1;
-					}
 
 					if((fromX<0)||(fromY<0)||(land<0)||(land>LANDSCAPENUM)
 						||(toX>=(mapWidth+1000))||(toY>=(mapHeight+1000)))
@@ -777,6 +815,10 @@ BOOL CALLBACK LandscapeDlg(HWND hdwnd, UINT message,
 							   LB_ADDSTRING, 0, (LPARAM)"Water");
 			SendDlgItemMessage(hdwnd, IDC_LIST1,
 							   LB_ADDSTRING, 0, (LPARAM)"Village");
+			SendDlgItemMessage(hdwnd, IDC_LIST1,
+							   LB_ADDSTRING, 0, (LPARAM)"Poison land");
+			SendDlgItemMessage(hdwnd, IDC_LIST1,
+							   LB_ADDSTRING, 0, (LPARAM)"Restore land");
 			return 1;
 		case WM_COMMAND:
 			switch(LOWORD(wParam))
@@ -785,13 +827,6 @@ BOOL CALLBACK LandscapeDlg(HWND hdwnd, UINT message,
 					if (HIWORD(wParam) == LBN_DBLCLK) {
 						curLandscape = SendDlgItemMessage(hdwnd, IDC_LIST1,
 											   LB_GETCURSEL, 0, 0L); // get index
-						if (curLandscape == 1)
-							curLandscape = VILLAGE;
-						else
-						{
-							if(curLandscape == 2)
-								curLandscape = WATER;
-						}
 						EndDialog(hdwnd, 0);
 					}
 					return 1;
@@ -800,19 +835,6 @@ BOOL CALLBACK LandscapeDlg(HWND hdwnd, UINT message,
 					/* display contents of the edit box */
 					curLandscape = SendDlgItemMessage(hdwnd, IDC_LIST1,
 										   LB_GETCURSEL, 0, 0L); // get index
-					if (curLandscape == 1)
-						curLandscape = VILLAGE;
-					else
-					{
-						if(curLandscape == 2)
-							curLandscape = WATER;
-					
-						else
-						{
-							if(curLandscape == -1)
-								curLandscape = GRASS;
-						}
-					}
 					EndDialog(hdwnd, 0);
 					return 1;
 			case IDCANCEL:
