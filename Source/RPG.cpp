@@ -16,7 +16,7 @@
 #include <windows.h>   // include important windows stuff
 #include <windowsx.h> 
 #include <mmsystem.h>
-#include <iostream.h> // include important C/C++ stuff
+#include <iostream> // include important C/C++ stuff
 #include <conio.h>
 #include <stdlib.h>
 #include <malloc.h>
@@ -39,17 +39,6 @@
 #define WINDOW_CLASS_NAME "WINXCLASS"  // class name
 
 
-// container structure for bitmaps .BMP file
-/*typedef struct BITMAP_FILE_TAG
-        {
-        BITMAPFILEHEADER bitmapfileheader;  // this contains the bitmapfile header
-        BITMAPINFOHEADER bitmapinfoheader;  // this is all the info including the palette
-//        PALETTEENTRY     palette[256];      // we will store the palette here
-        UCHAR            *buffer;           // this is a pointer to the data
-
-        } BITMAP_FILE, *BITMAP_FILE_PTR;
-*/
-
 // PROTOTYPES /////////////////////////////////////////////
 
 int Game_Init(void *parms=NULL);
@@ -65,9 +54,10 @@ LPDIRECTDRAWCLIPPER DDAttachClipper(LPDIRECTDRAWSURFACE lpdds, int num_rects, LP
 
 // WINX GAME PROGRAMMING CONSOLE FUNCTIONS ////////////////
 
-int ReadMapFromFile(int **&map, LPSTR szFileName, int &width, int &height)
+int ReadMapFromFile(MAPTILE **&map, LPSTR szFileName, int &width, int &height)
 {
 	int i;
+	int j;
 	FILE *fp;
 	if ((fp = fopen(szFileName, "r"))==NULL)
 		return(0);
@@ -75,16 +65,30 @@ int ReadMapFromFile(int **&map, LPSTR szFileName, int &width, int &height)
 	fscanf(fp, "%d %d", &width, &height);
 	
 	// allocating memory for the map
-	map = new int*[width];
+	map = new MAPTILE*[width];
 	for(i=0; i<width; i++)
-		map[i] = new int[height];
+		map[i] = new MAPTILE[height];
 
-	for (int j=0; j<height; j++)
+	for (j=0; j<height; j++)
 	{
 		fscanf(fp,"\n");
 		for (i=0; i<width-1; i++)
-			fscanf(fp,"%d ", &map[i][j]);
-		fscanf(fp, "%d", &map[width-1][j]);
+		{
+			fscanf(fp,"%d,%d,%d,%d", &(map[i][j].landtype),&(map[i][j].objtype),&(map[i][j].index),&(map[i][j].numFrame));
+			// initialize the curFrame variable
+			map[i][j].curFrame = 0;
+			if (map[i][j].landtype == WATER)
+				map[i][j].frameSequence = frameSequenceWater;
+			else
+				map[i][j].frameSequence = frameSequenceNormal;
+		}
+		fscanf(fp, "%d,%d,%d,%d", &(map[width-1][j].landtype),&(map[width-1][j].objtype),&(map[width-1][j].index),&(map[width-1][j].numFrame));
+		// initialize the curFrame variable
+		map[i][j].curFrame = 0;
+		if (map[i][j].landtype == WATER)
+			map[i][j].frameSequence = frameSequenceWater;
+		else
+			map[i][j].frameSequence = frameSequenceNormal;
 	}
 
 	fclose(fp);
@@ -219,26 +223,52 @@ int CreateOffScreen(LPDIRECTDRAWSURFACE &lpddshello, int pixel_width, int pixel_
 	ddsd.dwWidth = pixel_width;
 	ddsd.dwHeight = pixel_height;
 
-	ddsd.ddsCaps.dwCaps = DDSCAPS_OFFSCREENPLAIN;// | DDSCAPS_SYSTEMMEMORY;
+	ddsd.ddsCaps.dwCaps = DDSCAPS_OFFSCREENPLAIN;
 
 	if(FAILED(lpdd->CreateSurface(&ddsd,&lpddshello, NULL)))
-		return(0);
+	{
+		ddsd.ddsCaps.dwCaps = DDSCAPS_OFFSCREENPLAIN|DDSCAPS_SYSTEMMEMORY;
+		if(FAILED(lpdd->CreateSurface(&ddsd,&lpddshello, NULL)))
+			return(0);
+	}
 	return(1);
 }
 
-int CheckLandType(int type)
+int CreateOffScreenSystemMemory(LPDIRECTDRAWSURFACE &lpddshello, int pixel_width, int pixel_height)
 {
-	if(worldMap[mainChar[WAI].charPos[X]][mainChar[WAI].charPos[Y]] == type)
+	ZeroMemory(&ddsd, sizeof(ddsd));
+	ddsd.dwSize = sizeof(ddsd);
+
+	ddsd.dwFlags = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT;
+	ddsd.dwWidth = pixel_width;
+	ddsd.dwHeight = pixel_height;
+
+	ddsd.ddsCaps.dwCaps = DDSCAPS_OFFSCREENPLAIN|DDSCAPS_SYSTEMMEMORY;
+
+	if(FAILED(lpdd->CreateSurface(&ddsd,&lpddshello, NULL)))
+		return(0);
+
+	return(1);
+}
+
+int CheckLandType(int x, int y, int type)
+{
+	if(worldMap[x][y].landtype == type)
 		return(1);
 	else
 		return(0);
 }
 
-int PrintStatus(MAIN_CHAR_PTR character, int x, int y)
+int PrintStatus(int x, int y)
 {
+
+	MAIN_CHAR_PTR character;
 	HDC hdcSurf;
 	if(FAILED(lpddsprimary->GetDC(&hdcSurf)))
 	{
+		if (hdcSurf)
+			lpddsprimary->ReleaseDC(hdcSurf);
+
 		return(0);
 	}
 
@@ -250,29 +280,33 @@ int PrintStatus(MAIN_CHAR_PTR character, int x, int y)
 	SetBkMode(hdcSurf, TRANSPARENT);
 	GetTextMetrics(hdcSurf, &tm);
 	h = tm.tmHeight + tm.tmExternalLeading;
-
-	TextOut(hdcSurf,x,y+j*h,mainChar[WAI].name,strlen(mainChar[WAI].name));
-	j++;
-	sprintf(buf,"LV: %d   EXP: %d   Gold: %d   Next LV: %d",character->LV,character->exp,character->gold,character->nextLV);
-	TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
-	j++;
-	sprintf(buf, "HP: %d/%d   MP: %d/%d",character->HP,character->maxHP,character->MP,character->maxMP);
-	TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
-	j++;
-	sprintf(buf, "STR: %d   DEX: %d   INT: %d   SPIRIT: %d   CONS: %d",character->STR,character->DEX,character->INT,character->SPIRIT,character->CONS);
-	TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
-	j++;
-	sprintf(buf, "ATK: %d   DEF: %d",character->ATK,character->DEF);
-	TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
-	j++;
-	i = sprintf(buf, "Weapon: +%dAT  Name: ",(character->weapon)->attackPower);
-	sprintf(buf + i, (character->weapon)->name);
-	TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
-	j++;
-	i = sprintf(buf, "Armor: +%dDEF  Name: ",(character->armor)->defPower);
-	sprintf(buf + i, (character->armor)->name);
-	TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
-
+	for (int m=0; m<curNumChar; m++)
+	{
+		character = &(mainChar[m]);
+		TextOut(hdcSurf,x,y+j*h,character->name,strlen(character->name));
+		j++;
+		sprintf(buf,"LV: %d   EXP: %d   Gold: %d   Next LV: %d",character->LV,character->exp,character->gold,character->nextLV);
+		TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
+		j++;
+		sprintf(buf, "HP: %d/%d   MP: %d/%d",character->HP,character->maxHP,character->MP,character->maxMP);
+		TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
+		j++;
+		sprintf(buf, "STR: %d   DEX: %d   INT: %d   SPIRIT: %d   CONS: %d",character->STR,character->DEX,character->INT,character->SPIRIT,character->CONS);
+		TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
+		j++;
+		sprintf(buf, "ATK: %d   DEF: %d",character->ATK,character->DEF);
+		TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
+		j++;
+		i = sprintf(buf, "Weapon: +%dAT  Name: ",(character->weapon)->attackPower);
+		sprintf(buf + i, (character->weapon)->name);
+		TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
+		j++;
+		i = sprintf(buf, "Armor: +%dDEF  Name: ",(character->armor)->defPower);
+		sprintf(buf + i, (character->armor)->name);
+		TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
+		x+=250;
+		j =0;
+	}
 	lpddsprimary->ReleaseDC(hdcSurf);
 
 	return(1);
@@ -283,6 +317,9 @@ int OutMessage(int x, int y)
 	HDC hdcSurf;
 	if(FAILED(lpddsprimary->GetDC(&hdcSurf)))
 	{
+		if (hdcSurf)
+			lpddsprimary->ReleaseDC(hdcSurf);
+
 		return(0);
 	}
 
@@ -311,7 +348,7 @@ int OutMessage(int x, int y)
 
 	lpddsprimary->ReleaseDC(hdcSurf);
 
-	PrintStatus(mainChar, x, y);
+	PrintStatus(/*mainChar,*/ x, y);
 
 	return(1);
 }
@@ -321,6 +358,9 @@ int OutText(char *str, int x, int y)
 	HDC hdcSurf;
 	if(FAILED(lpddsprimary->GetDC(&hdcSurf)))
 	{
+		if (hdcSurf)
+			lpddsprimary->ReleaseDC(hdcSurf);
+
 		return(0);
 	}
 
@@ -343,11 +383,13 @@ int OutText(char *str, int x, int y)
 }
 
 // this prints numToPrint Monsters' statuses on screen
-int WarPrintStatus(int x, int y, int numToPrint)
+int WarPrintStatus(int x, int y)
 {
 	HDC hdcSurf;
 	if(FAILED(lpddsprimary->GetDC(&hdcSurf)))
 	{
+		if (hdcSurf)
+			lpddsprimary->ReleaseDC(hdcSurf);
 		return(0);
 	}
 
@@ -360,8 +402,10 @@ int WarPrintStatus(int x, int y, int numToPrint)
 	GetTextMetrics(hdcSurf, &tm);
 	h = tm.tmHeight + tm.tmExternalLeading;
 
-	for (int i=0; i<numToPrint; i++)
+	for (int i=0; i<numMonsterInWar; i++)
 	{
+		if (warMonsterIndex[i]!=DEADMONSTER)
+		{
 		TextOut(hdcSurf,x,y+j*h,monster[warMonsterIndex[i]][i].name,strlen(monster[warMonsterIndex[i]][i].name));
 		j++;
 		sprintf(buf,"EXP: %d   Gold: %d",monster[warMonsterIndex[i]][i].exp,monster[warMonsterIndex[i]][i].gold);
@@ -376,6 +420,8 @@ int WarPrintStatus(int x, int y, int numToPrint)
 		sprintf(buf, "ATK: %d   DEF: %d",monster[warMonsterIndex[i]][i].ATK,monster[warMonsterIndex[i]][i].DEF);
 		TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
 		x += 150;
+		j = 0;
+		}
 	}
 	lpddsprimary->ReleaseDC(hdcSurf);
 
@@ -394,6 +440,7 @@ int CharacterMove(int direction, int &displayEffect, int &encounter)
 	int xOrY;
 	int plusOrMinus;
 	int limit;
+	int i;
 
 	displayEffect = GRASS;
 	
@@ -425,18 +472,48 @@ int CharacterMove(int direction, int &displayEffect, int &encounter)
 	if(mainChar[WAI].charPos[xOrY] == limit)
 		return(0);
 
-	mainChar[WAI].charPos[xOrY]+=plusOrMinus;
-
-	if(CheckLandType(WATER))
+	if (xOrY==X)
 	{
-		mainChar[WAI].charPos[xOrY]-=plusOrMinus;
-		return(0);
+		if(CheckLandType(mainChar[WAI].charPos[X]+plusOrMinus,mainChar[WAI].charPos[Y], WATER))
+		{
+			return(0);
+		}
+	}
+	else
+	{
+		if(CheckLandType(mainChar[WAI].charPos[X],mainChar[WAI].charPos[Y]+plusOrMinus, WATER))
+		{
+			return(0);
+		}
 	}
 
-	if (mainChar[WAI].state != DEAD)
+	for (i=1; i<curNumChar; i++)
 	{
-//		srand((unsigned)time(NULL));
-		encounter = ((rand()%9) == 1);
+		mainChar[i].charPos[X] = mainChar[i-1].charPos[X];
+		mainChar[i].charPos[Y] = mainChar[i-1].charPos[Y];
+	}
+	mainChar[WAI].charPos[xOrY]+=plusOrMinus;
+	for (i=1; i<curNumChar; i++)
+	{
+		(mainChar[i].worldCharArea).bottom = (mainChar[WAI].worldCharArea).bottom + (mainChar[i].charPos[Y]-mainChar[WAI].charPos[Y])*CELL_WIDTH;
+		(mainChar[i].worldCharArea).left = (mainChar[WAI].worldCharArea).left + (mainChar[i].charPos[X]-mainChar[WAI].charPos[X])*WORLDCHARWIDTH;
+		(mainChar[i].worldCharArea).top = (mainChar[i].worldCharArea).bottom - CELL_WIDTH;
+		(mainChar[i].worldCharArea).right = (mainChar[i].worldCharArea).left + WORLDCHARWIDTH;
+		(mainChar[i].worldCharUpperArea).bottom = (mainChar[i].worldCharArea).bottom - CELL_WIDTH;
+		(mainChar[i].worldCharUpperArea).left = (mainChar[i].worldCharArea).left;
+		(mainChar[i].worldCharUpperArea).top = (mainChar[i].worldCharArea).top - CELL_WIDTH;
+		(mainChar[i].worldCharUpperArea).right = (mainChar[i].worldCharArea).right;
+	}
+
+	if (numCharDead != curNumChar)
+	{
+		numSteps++;
+		if (numSteps >= MINSTEPSBEFOREENCOUNTER)
+		{
+			encounter = ((rand()%(MAXSTEPSBEFOREENCOUNTER - numSteps)) == 0);
+		}
+		else
+			encounter = 0;
 		if (encounter)
 		{
 			numMonsterInWar = rand()%3+1;
@@ -446,20 +523,29 @@ int CharacterMove(int direction, int &displayEffect, int &encounter)
 			for (i=numMonsterInWar; i<MAXMONSTERINWAR; i++)
 				warMonsterIndex[i] = DEADMONSTER;
 		}
-		if(CheckLandType(RESTORELAND))
+		for (i=curNumChar-1; i>=WAI; i--)
 		{
-			mainChar[WAI].HP = mainChar[WAI].maxHP;
-			displayEffect = RESTORELAND;
-		}
-		if(CheckLandType(POISONLAND))
-		{
-			mainChar[WAI].HP--;
-			if(mainChar[WAI].HP == 0)
+			if(mainChar[i].state!=DEAD)
 			{
-				mainChar[WAI].state = DEAD;
-				charIndex = DEADCHAR;
+				if(CheckLandType(mainChar[i].charPos[X],mainChar[i].charPos[Y],RESTORELAND))
+				{
+					mainChar[i].HP = mainChar[i].maxHP;
+					mainChar[i].MP = mainChar[i].maxMP;
+					displayEffect = RESTORELAND;
+				}
+				else if(CheckLandType(mainChar[i].charPos[X],mainChar[i].charPos[Y],POISONLAND))
+				{
+					mainChar[i].HP--;
+					if(mainChar[i].HP == 0)
+					{
+						mainChar[i].state = DEAD;
+						charIndex[i] = DEADCHAR;
+						numCharDead++;
+					}
+					displayEffect = POISONLAND;
+				}
 			}
-			displayEffect = POISONLAND;
+			mainChar[i].charDirection = mainChar[i-1].charDirection;
 		}
 	}
 
@@ -471,48 +557,105 @@ int CharacterMove(int direction, int &displayEffect, int &encounter)
 
 int FromWarZoneToWorldZone()
 {
+	int i;
+	startBattle = 1;
+	warOver = NOTFINISHED;
+	hitCount = 0;
+	numMonsterDead = 0;
+
 	firstRun = 1;
 
 	zone = WORLDZONE;
-	if (mainChar[WAI].state == ALIVE)
-		charIndex = MAINCHAR;
-	if (mainChar[WAI].state == DEAD)
-		charIndex = DEADCHAR;
-	src_area.bottom = CELL_WIDTH;
+	for (i=0; i<curNumChar; i++)
+	{
+		if (mainChar[i].state == ALIVE)
+			charIndex[i] = MAINCHAR;
+		if (mainChar[i].state == DEAD)
+			charIndex[i] = DEADCHAR;
+	}
 
 	return(1);
 }
 
-// HARD CODE FOR NOW
+// helper function for WhoseTurn()
+int WarSortTurn()
+{
+	int i;
+	int j;
+	int key;
+	int key1;
+
+	for (j=1; j<hitCount; j++)
+	{
+		key = warTurnFactor[j];
+		key1 = warTurn[j];
+		i = j-1;
+		while((i>=0) && (warTurnFactor[i]<key))
+		{
+			warTurnFactor[i+1] = warTurnFactor[i];
+			warTurn[i+1] = warTurn[i];
+			i = i--;
+		}
+		warTurnFactor[i+1] = key;
+		warTurn[i+1] = key1;
+
+	}
+
+	return(1);
+}
+
+// determine the characters' and monsters' fighting sequence
 int WhoseTurn()
 {
-	warTurn[0] = CHARTURN;
-	warTurn[1] = MONSTER1TURN;
-	warTurn[2] = MONSTER2TURN;
-	warTurn[3] = MONSTER3TURN;
-	return(1);
-/*	int charDex, monsterDex;
-	charDex = rand()%6+1*dex1;
-	monsterDex = rand()%6+1*dex2;
+	int i;
+	int j = 0;
+	for (i=0; i<numMonsterInWar; i++)
+	{
+		if(warMonsterIndex[i]!=DEADMONSTER)
+		{
+			warTurnFactor[j] = int(monster[warMonsterIndex[i]][i].DEX*(0.5 + 0.05*(rand()%16)));
+			warTurn[j] = i;
+			j++;
+		}
+	}
+	for (i=0; i<curNumChar; i++)
+	{
+		if (mainChar[i].state != DEAD)
+		{
+			warTurnFactor[j] = int(mainChar[i].DEX*(0.5 + 0.05*(rand()%16)));
+			warTurn[j] = WAITURN + i;
+			j++;
+		}
+	}
+	
+	WarSortTurn();
 
-	return (charDex > monsterDex);*/
+	return(1);
 }
 
 // HARD CODE FOR NOW
 int MonsterAction()
 {
-	int i;
+	int i,j;
 	int action;
 	for (i=0; i<numMonsterInWar; i++)
 	{
 		if (warMonsterIndex[i] != DEADMONSTER)
 		{
 			monster[warMonsterIndex[i]][i].warAction[0] = ATTACK;
-			monster[warMonsterIndex[i]][i].warAction[1] = WAI;
+			for (j=0; j<curNumChar; j++)
+			{
+				if (mainChar[j].state != DEAD)
+				{
+					monster[warMonsterIndex[i]][i].warAction[1] = j;
+					break;
+				}
+			}
+			hitCount++;
 		}
 	}
 /*	action = rand()%3;
-	if(action!=MAGIC)
+	if(action!=CAST)
 		monster[index][which].warAction[0] = action;
 	else if(!monster[index][which].MP)
 		monster[index][which].warAction[0] = ATTACK;
@@ -524,54 +667,130 @@ int MonsterAction()
 
 int CharLevelUP(int who)
 {
-	mainChar[who].nextLV = (mainChar[who].nextLV + mainChar[who].nextLV/2);
-	mainChar[who].LV++;
-	sprintf(buf,"LEVEL UP!");
-	lpddsprimary->Blt(&warMessageBox, 
-		NULL, 
-		NULL, 
-		DDBLT_COLORFILL | DDBLT_WAIT, 
+	lpddsprimary->Blt(&warInstantMessageBox,
+		NULL,
+		NULL,
+		DDBLT_COLORFILL | DDBLT_WAIT,
 		&ddbltfx);
-		OutMessage(20,330);
-		int keyTemp = 0;
-				
+
+	OutText(buf,warInstantMessageBox.left,warInstantMessageBox.top);
+
+	keyTemp = 0;
+	Sleep(200);	// wait until the key state changes back to up.
 	while(!keyTemp)
 	{
 		if(KEY_DOWN('A') || KEY_DOWN('M')||KEY_DOWN('D')||KEY_DOWN('I')||KEY_DOWN(VK_SPACE)||KEY_DOWN(VK_RETURN))
 			keyTemp = 1;
 	}
+
+	mainChar[who].nextLV = (mainChar[who].nextLV + mainChar[who].nextLV/2);
+	mainChar[who].LV++;
+
+	sprintf(buf,"%s LEVEL UP!", mainChar[who].name);
+
+	if (mainChar[who].exp >= mainChar[who].nextLV)
+		CharLevelUP(who);
 	
 	return(1);
 }
 
 int CharKillMonster(int whichChar, int whichMonster)
 {
+	int expIncrease;
+	int i;
 	monster[warMonsterIndex[whichMonster]][whichMonster].HP = monster[warMonsterIndex[whichMonster]][whichMonster].maxHP;
 	monster[warMonsterIndex[whichMonster]][whichMonster].MP = monster[warMonsterIndex[whichMonster]][whichMonster].maxMP;
 	monster[warMonsterIndex[whichMonster]][whichMonster].state = ALIVE;
-	mainChar[whichChar].exp += monster[warMonsterIndex[whichMonster]][whichMonster].exp;
-	mainChar[whichChar].gold += monster[warMonsterIndex[whichMonster]][whichMonster].gold;
+	mainChar[WAI].gold += monster[warMonsterIndex[whichMonster]][whichMonster].gold;
+	expIncrease = (monster[warMonsterIndex[whichMonster]][whichMonster].exp)/(curNumChar - numCharDead);
+	if (expIncrease < 1)
+		expIncrease = 1;
+	for (i=0; i<curNumChar;i++)
+	{
+		if (mainChar[i].state != DEAD)
+			mainChar[i].exp += expIncrease;
+	}
+
+	lpddsprimary->Blt(&warInstantMessageBox, 
+		NULL, 
+		NULL, 
+		DDBLT_COLORFILL | DDBLT_WAIT, 
+		&ddbltfx);
+
+	OutText(buf,warInstantMessageBox.left,warInstantMessageBox.top);
+
+	keyTemp = 0;
+	Sleep(200);	// wait until the key state changes back to up.
+	while(!keyTemp)
+	{
+		if(KEY_DOWN('A') || KEY_DOWN('M')||KEY_DOWN('D')||KEY_DOWN('I')||KEY_DOWN(VK_SPACE)||KEY_DOWN(VK_RETURN))
+			keyTemp = 1;
+	}
+
+	sprintf(buf, "Monster %s is Dead!", monster[warMonsterIndex[whichMonster]][whichMonster].name);
+
+	for (i=0; i<curNumChar; i++)
+	{
+		if (mainChar[i].exp >= mainChar[i].nextLV)
+		{
+			CharLevelUP(i);
+		}
+	}
+
 	warMonsterIndex[whichMonster] = DEADMONSTER;
 
 	numMonsterDead++;
 
-	if (mainChar[whichChar].exp >= mainChar[whichChar].nextLV)
-	{
-		CharLevelUP(whichChar);
-	}
-
 	return(1);
 }
 
+int TargetMonsterDead(int &target)
+{
+	int j;
+	if(warMonsterIndex[target] == DEADMONSTER)
+	{
+		for (j=0; j<numMonsterInWar; j++)
+		{
+			if (warMonsterIndex[j] != DEADMONSTER)
+			{
+				target = j;
+				break;
+			}
+		}
+	}	// end if(warMonsterIndex[target] == DEADMONSTER)
+	return(1);
+}
+
+int TargetCharacterDead(int &target)
+{
+	int j;
+	if(mainChar[target].state == DEAD)
+	{
+		for (j=WAI; j<curNumChar; j++)
+		{
+			if (mainChar[j].state!=DEAD)
+			{
+				target = j;
+				break;
+			}
+		}
+	}
+	return(1);
+}
 int FightOneRound()
 {
-	int hurt;
+	int hurt;	// how many points to hurt
+	int heal;	// how many points to heal
 
-	int index;	// index of active character or monster
-	int target;
+	int index;	// warAction[0] index of active character or monster
+	int target;		// warAction[1] indicating target to perform the action
+	int useWhat;	// warAction[2] indicating using what magic or item
+	int dependWhat;	// the effect of the action depends on what factor of the character
 
 	int i;
+//	int j;
 
+	int hasMessage = 1;
 	sprintf(buf,"");
 
 	if(warTurn[turnCount] <= MONSTER3TURN)
@@ -579,10 +798,14 @@ int FightOneRound()
 		index = warTurn[turnCount];
 		if (warMonsterIndex[index] != DEADMONSTER)
 		{
+			// for attack
 			if (monster[warMonsterIndex[index]][index].warAction[0] == ATTACK)
 			{
 				target = monster[warMonsterIndex[index]][index].warAction[1];
-				if ((hurt = (monster[warMonsterIndex[index]][index].ATK/5*(rand()%5+1) - (mainChar[target].DEF/5*(rand()%2+1)))) < 0)
+
+				TargetCharacterDead(target);	
+				
+				if ((hurt = int(0.5+monster[warMonsterIndex[index]][index].ATK*(0.9 + 0.02*(rand()%11)) - mainChar[target].DEF*(0.5+0.02*(rand()%11)))) < 0)
 					hurt = 0;
 				mainChar[target].HP-=hurt;
 				sprintf(buf, "%s hits %s by %d points", monster[warMonsterIndex[index]][index].name, mainChar[target].name, hurt);
@@ -591,15 +814,38 @@ int FightOneRound()
 				{
 					mainChar[target].HP = 0;
 					mainChar[target].state = DEAD;
-					warOver = MONSTERWIN;
+					numCharDead++;
+					warCharIndex[target] = WARDEADCHAR;
+					lpddsprimary->Blt(&warInstantMessageBox, 
+						NULL, 
+						NULL, 
+						DDBLT_COLORFILL | DDBLT_WAIT, 
+						&ddbltfx);
+
+					OutText(buf,warInstantMessageBox.left,warInstantMessageBox.top);
+					keyTemp = 0;
+					Sleep(200);	// wait until the key state changes back to up.
+					while(!keyTemp)
+					{
+						if(KEY_DOWN('A') || KEY_DOWN('M')||KEY_DOWN('D')||KEY_DOWN('I')||KEY_DOWN(VK_SPACE)||KEY_DOWN(VK_RETURN))
+							keyTemp = 1;
+					}
+					sprintf(buf, "%s is Dead!", mainChar[target].name);
+					if (numCharDead == curNumChar)
+						warOver = MONSTERWIN;
 				}
 			}
 /*			else if (monster[warMonsterIndex[index]][index].warAction[0] == DEFEND)
 			{
 				monster[warMonsterIndex[index]][index].DEF = (monster[warMonsterIndex[index]][index].DEF)<<1;
 				sprintf(buf, "%s's defense doubles!", monster[warMonsterIndex[index]][index].name);
-			}
-*/		}
+*///			}
+		}
+		else
+		{
+			hasMessage = 0;
+		}
+
 /*		else
 		{
 			// in case the dead monster chooses defend
@@ -608,13 +854,16 @@ int FightOneRound()
 */	}
 	else if (warTurn[turnCount] > MONSTER3TURN)
 	{
-		index = warTurn[turnCount] - CHARTURN;
-		if (mainChar[index].warAction[0] == ATTACK)
+		index = warTurn[turnCount] - WAITURN;
+		if (mainChar[index].state != DEAD)
 		{
-			target = mainChar[index].warAction[1];
-			if (warMonsterIndex[target] != DEADMONSTER)
+			if (mainChar[index].warAction[0] == ATTACK)
 			{
-				if ((hurt = (mainChar[index].ATK/5*(rand()%5+1) - (monster[warMonsterIndex[target]][target].DEF/5*(rand()%2+1)))) < 0)
+				target = mainChar[index].warAction[1];
+				
+				TargetMonsterDead(target);
+
+				if ((hurt = int(0.5+mainChar[index].ATK*(0.9 + 0.02*(rand()%11)) - monster[warMonsterIndex[target]][target].DEF*(0.5+0.02*(rand()%11)))) < 0)
 					hurt = 0;
 				monster[warMonsterIndex[target]][target].HP-=hurt;
 				sprintf(buf, "%s hits %s by %d points", mainChar[index].name, monster[warMonsterIndex[target]][target].name, hurt);
@@ -625,43 +874,278 @@ int FightOneRound()
 					if (numMonsterInWar == numMonsterDead)
 						warOver = CHARWIN;
 				}
-			}
-		}
-/*		else if (mainChar[index].warAction[0] == DEFEND)
-		{
-			mainChar[index].DEF = (mainChar[index].DEF)<<1;
-			sprintf(buf, "%s's defense doubles!", mainChar[index].name);
-		}
-*/	}
+			}	// end if(mainChar[index].warAction[0] == ATTACK)
 
-/*	for (i=0; i<NUMCHAR; i++)
+			else if (mainChar[index].warAction[0] == DEFEND)
+			{
+				mainChar[index].DEF = (mainChar[index].DEF)<<1;
+				sprintf(buf, "%s's defense doubles!", mainChar[index].name);
+			}	// end if(mainChar[index].warAction[0] == DEFEND)
+
+			else if (mainChar[index].warAction[0] == CAST)
+			{
+				useWhat = mainChar[index].warAction[2];
+				dependWhat = magicList[useWhat].dependOn;
+				mainChar[index].MP -= magicList[useWhat].MPneeded;
+
+				sprintf(buf, "%s casts %s", mainChar[index].name, magicList[useWhat].name);
+				lpddsprimary->Blt(&warInstantMessageBox, 
+					NULL, 
+					NULL, 
+					DDBLT_COLORFILL | DDBLT_WAIT, 
+					&ddbltfx);
+
+				OutText(buf,warInstantMessageBox.left,warInstantMessageBox.top);
+
+				keyTemp = 0;
+				Sleep(200);	// wait until the key state changes back to up.
+				while(!keyTemp)
+				{
+					if(KEY_DOWN('A') || KEY_DOWN('M')||KEY_DOWN('D')||KEY_DOWN('I')||KEY_DOWN(VK_SPACE)||KEY_DOWN(VK_RETURN))
+						keyTemp = 1;
+				}
+				if ((magicList[useWhat].type == ATTACKMAGIC) && (magicList[useWhat].who == TO1ENEMY))
+				{
+					target = mainChar[index].warAction[1];
+
+					TargetMonsterDead(target);
+
+					if (dependWhat == INTMAGIC)
+						hurt = int(0.5+ magicList[useWhat].power*( 0.5 + ( (float(mainChar[index].INT)) / (float(monster[warMonsterIndex[target]][target].INT)) ) * ( 0.05*(rand()%11) ) ) );
+					else if (dependWhat == SPIRITMAGIC)
+						hurt = int(0.5+ magicList[useWhat].power*( 0.5 + ( (float(mainChar[index].SPIRIT)) / (float(monster[warMonsterIndex[target]][target].SPIRIT)) ) * ( 0.05*(rand()%11) ) ) );
+					if (hurt < 0)
+						hurt = 0;
+					if(magicList[useWhat].status == TOHP)
+					{
+						monster[warMonsterIndex[target]][target].HP-=hurt;
+						sprintf(buf, "%s was hurt %d points!", monster[warMonsterIndex[target]][target].name, hurt);
+						if(monster[warMonsterIndex[target]][target].HP <= 0)
+						{
+							CharKillMonster(index, target);
+
+							if (numMonsterInWar == numMonsterDead)
+								warOver = CHARWIN;
+						}
+					}	// end if(magicList[useWhat].status == TOHP)
+				}	// end if ((magicList[useWhat].type == ATTACKMAGIC) && (magicList[useWhat].who == TO1ENEMY))
+ 
+				else if ((magicList[useWhat].type == REFRESHMAGIC) && (magicList[useWhat].who == TO1CHAR))
+				{
+					target = mainChar[index].warAction[1];
+
+					TargetCharacterDead(target);
+
+					if (dependWhat == INTMAGIC)
+						heal = int(0.5 + magicList[useWhat].power*( 0.7 + (mainChar[index].INT*(0.001 *(rand()%9))) ));
+					else if (dependWhat == SPIRITMAGIC)
+						heal = int(0.5 + magicList[useWhat].power*( 0.7 + (mainChar[index].SPIRIT*(0.001 *(rand()%9))) ));
+					if(magicList[useWhat].status == TOHP)
+					{
+						mainChar[target].HP+=heal;
+						sprintf(buf, "%s regains %d HPs!", mainChar[target].name, heal); 
+						if (mainChar[target].HP>mainChar[target].maxHP)
+							mainChar[target].HP = mainChar[target].maxHP;
+					}	// end if(magic[useWhat].status == TOHP)
+				}	// end else if ((magicList[(mainChar[index].warAction[2])].type == REFRESHMAGIC) && (magicList[(mainChar[index].warAction[2])].who == TO1CHAR))
+			}	// end if(mainChar[index].warAction[0] == CAST)
+		}
+		else
+		{
+			hasMessage = 0;
+		}
+	}
+
+	if (hasMessage)
+	{
+		lpddsprimary->Blt(&warInstantMessageBox, 
+			NULL, 
+			NULL, 
+			DDBLT_COLORFILL | DDBLT_WAIT, 
+			&ddbltfx);
+
+		OutText(buf,warInstantMessageBox.left,warInstantMessageBox.top);
+
+		keyTemp = 0;
+		Sleep(200);	// wait until the key state changes back to up.
+		while(!keyTemp)
+		{
+			if(KEY_DOWN('A') || KEY_DOWN('M')||KEY_DOWN('D')||KEY_DOWN('I')||KEY_DOWN(VK_SPACE)||KEY_DOWN(VK_RETURN))
+				keyTemp = 1;
+		}
+	}
+	// reset the def of characters
+	for (i=0; i<curNumChar; i++)
 	{
 		if ((hitCount == 1) && (mainChar[i].warAction[0] == DEFEND))
 			mainChar[i].DEF = (mainChar[i].DEF)>>1;
 	}
-	for (i=0; i<NUMMONSTER; i++)
+
+/*	for (i=0; i<NUMMONSTER; i++)
 	{
 		if ((hitCount == 1) && (monster[warMonsterIndex[i]][i].warAction[0] == DEFEND))
 			monster[warMonsterIndex[i]][i].DEF = (monster[warMonsterIndex[i]][i].DEF)>>1;
 	}
 */
-	OutText(buf,20,290);
 
-	int keyTemp = 0;
-	Sleep(200);	// wait until the key state changes back to up.
+	return(1);
+}
+
+int QueryMonster(int k)
+{
+	int i;
+	lpddsprimary->Blt(&warInstantMessageBox, 
+		NULL, 
+		NULL, 
+		DDBLT_COLORFILL | DDBLT_WAIT, 
+		&ddbltfx);
+
+	OutText("To which monster?(1-3)",warInstantMessageBox.left,warInstantMessageBox.top);
+	Sleep(200);
+	i = 0;
+	keyTemp = 0;
+	while(!i)
+	{
+		while(!keyTemp)
+		{
+			if(KEY_DOWN('1'))
+			{
+				warKey = 0;
+				keyTemp=1;
+			}
+			else if(KEY_DOWN('2'))
+			{
+				warKey = 1;
+				keyTemp = 1;
+			}
+			else if (KEY_DOWN('3'))
+			{
+				warKey = 2;
+				keyTemp = 1;
+			}
+		}	// end while(!keyTemp)
+		if (warMonsterIndex[warKey] != DEADMONSTER)
+		{
+			mainChar[k].warAction[1] = warKey;
+			i = 1;
+		}
+		else
+		{
+			lpddsprimary->Blt(&warInstantMessageBox, 
+				NULL, 
+				NULL, 
+				DDBLT_COLORFILL | DDBLT_WAIT, 
+				&ddbltfx);
+			OutText("Invalid Monster or Monster already Dead! Choose another one(1-3)",warInstantMessageBox.left,warInstantMessageBox.top);
+			Sleep(200);
+			keyTemp = 0;
+		}
+	}	// end while(!i)
+
+	return(1);
+}
+
+int QueryCharacter(int k)
+{
+	int i;
+	lpddsprimary->Blt(&warInstantMessageBox, 
+		NULL, 
+		NULL, 
+		DDBLT_COLORFILL | DDBLT_WAIT, 
+		&ddbltfx);
+
+	OutText("To which character?(W=Wai  R=Ray)",warInstantMessageBox.left,warInstantMessageBox.top);
+	Sleep(200);
+	i = 0;
+	keyTemp = 0;
+	while(!i)
+	{
+		while(!keyTemp)
+		{
+			if(KEY_DOWN('W'))
+			{
+				warKey = WAI;
+				keyTemp=1;
+			}
+			else if(KEY_DOWN('R'))
+			{
+				warKey = RAY;
+				keyTemp = 1;
+			}
+		}	// end while(!keyTemp)
+
+		if (mainChar[warKey].state != DEAD)
+		{
+			mainChar[k].warAction[1] = warKey;
+			i = 1;
+		}
+		else
+		{
+			lpddsprimary->Blt(&warInstantMessageBox, 
+				NULL, 
+				NULL, 
+				DDBLT_COLORFILL | DDBLT_WAIT, 
+				&ddbltfx);
+			OutText("Character is Dead! Choose another one(W=Wai R=Ray)",warInstantMessageBox.left,warInstantMessageBox.top);
+			Sleep(200);
+			keyTemp = 0;
+		}
+	}	// end while(!i)
+
+	return(1);
+}
+
+int QueryMagic(int k)
+{
+	lpddsprimary->Blt(&warInstantMessageBox, 
+		NULL, 
+		NULL, 
+		DDBLT_COLORFILL | DDBLT_WAIT, 
+		&ddbltfx);
+
+	int h = 0;
+	h=sprintf(buf, "Which Magic?");
+	for (int m=0; m<mainChar[k].numMagic; m++)
+	{
+		h += sprintf(buf+h, " %s", magicList[(mainChar[k].magic[m])].name);
+	}
+
+	OutText(buf,warInstantMessageBox.left,warInstantMessageBox.top);
+	Sleep(200);
+
+	keyTemp = 0;
+	warKey = 0;
 	while(!keyTemp)
 	{
-		if(KEY_DOWN('A') || KEY_DOWN('M')||KEY_DOWN('D')||KEY_DOWN('I')||KEY_DOWN(VK_SPACE)||KEY_DOWN(VK_RETURN))
+		if(KEY_DOWN('L'))
+		{
+			warKey--;
+			if (warKey < 0)
+				warKey = mainChar[k].numMagic-1;
+			Sleep(200);
+		}
+		else if(KEY_DOWN('R'))
+		{
+			warKey++;
+			if (warKey >= mainChar[k].numMagic)
+				warKey = 0;
+			Sleep(200);
+		}
+		else if (KEY_DOWN('A'))
+		{
 			keyTemp = 1;
-	}
-	
-//	warOver = CHARWIN;
+		}
+	}	// end while(!keyTemp)
+	mainChar[k].warAction[2] = mainChar[k].magic[warKey];
+
 	return(1);
 }
 
 int War_Main(void *parms)
 {
 	int i;
+	int j;
+
 	if(warOver)
 	{
 		FromWarZoneToWorldZone();
@@ -672,53 +1156,91 @@ int War_Main(void *parms)
 	{
 		while(!hitCount)
 		{
-			if (KEY_DOWN('A'))
+			j=0;
+			while(hitCount!=curNumChar-numCharDead)	// loop for player to enter command
 			{
-				hitCount = numMonsterInWar+1;
-				turnCount = 0;
-				mainChar[WAI].warAction[0] = ATTACK;
-				// hard code for now
-				for (i=0; i<numMonsterInWar; i++)
+				// find an alive character
+				while(mainChar[j].state == DEAD)
 				{
-					if (warMonsterIndex[i] != DEADMONSTER)
+					j++;
+				}
+				sprintf(buf, "%s's Turn", mainChar[j].name);
+				lpddsprimary->Blt(&warInstantMessageBox, 
+					NULL, 
+					NULL, 
+					DDBLT_COLORFILL | DDBLT_WAIT, 
+					&ddbltfx);
+
+				OutText(buf,warInstantMessageBox.left,warInstantMessageBox.top);
+				keyTemp = 0;
+				while(!keyTemp)
+				{
+					if(KEY_DOWN('A'))
 					{
-						mainChar[WAI].warAction[1] = i;
-						break;
+						mainChar[j].warAction[0] = ATTACK;
+						QueryMonster(j);
+						
+						hitCount++;
+						j++;
+						Sleep(200);	// wait until the key state changes back to up.
+					}	// end if(KEY_DOWN('A')
+			
+					else if (KEY_DOWN('M'))
+					{
+						mainChar[j].warAction[0] = CAST;
+						QueryMagic(j);
+						if (magicList[(mainChar[j].warAction[2])].MPneeded > mainChar[j].MP)
+						{
+							lpddsprimary->Blt(&warInstantMessageBox, 
+								NULL, 
+								NULL, 
+								DDBLT_COLORFILL | DDBLT_WAIT, 
+								&ddbltfx);
+							OutText("Not Enough MP!",warInstantMessageBox.left,warInstantMessageBox.top);
+							keyTemp = 0;
+							Sleep(200);	// wait until the key state changes back to up.
+							while(!keyTemp)
+							{
+								if(KEY_DOWN('A') || KEY_DOWN('M')||KEY_DOWN('D')||KEY_DOWN('I')||KEY_DOWN(VK_SPACE)||KEY_DOWN(VK_RETURN))
+									keyTemp = 1;
+							}
+						}
+						else
+						{
+							if ((magicList[(mainChar[j].warAction[2])].type == ATTACKMAGIC) && (magicList[(mainChar[j].warAction[2])].who == TO1ENEMY))
+							{
+								QueryMonster(j);
+							}
+							else if ((magicList[(mainChar[j].warAction[2])].type == REFRESHMAGIC) && (magicList[(mainChar[j].warAction[2])].who == TO1CHAR))
+							{
+								QueryCharacter(j);
+							}
+
+							hitCount++;
+							j++;
+						}
+						Sleep(200);	// wait until the key state changes back to up.
 					}
-				}
-				MonsterAction();
-				WhoseTurn();
-			}
-	/*		else if (KEY_DOWN('M'))
+					else if (KEY_DOWN('D'))
+					{
+						mainChar[j].warAction[0] = DEFEND;
+						hitCount++;
+						j++;
+						Sleep(200);	// wait until the key state changes back to up.
+						keyTemp = 1;
+					}	// end if(KEY_DOWN('D'))
+				}	// end while(!keyTemp)
+			}	// end while(hitCount!=curNumChar-numCharDead)
+			MonsterAction();
+			WhoseTurn();
+			turnCount = 0;
+			if (KEY_DOWN('Q'))
 			{
-				mainChar[WAI].warAction = MAGIC;
-				monster[warMonsterIndex].warAction = MonsterAction(warMonsterIndex);
-				warTurn[0] = CharBeforeMonster(mainChar[WAI].DEX, monster[warMonsterIndex].DEX);
+				FromWarZoneToWorldZone();
+				return(1);
 			}
-	*//*		else if (KEY_DOWN('D'))
-			{
-				hitCount = numMonsterInWar;
-				turnCount = 0;
-				mainChar[WAI].warAction[0] = DEFEND;
-				for (i=0; i<numMonsterInWar; i++)
-				{
-					MonsterAction(warMonsterIndex[i], i);
-				}
-				WhoseTurn();
-			}
-*/	/*		else if (KEY_DOWN('I'))
-			{
-				mainChar[WAI].warAction = ITEM;
-				monster[warMonsterIndex].warAction = MonsterAction(warMonsterIndex);
-				warTurn[0] = CharBeforeMonster(mainChar[WAI].DEX, monster[warMonsterIndex].DEX);
-			}
-	*/	}
-		if (KEY_DOWN('Q'))
-		{
-			FromWarZoneToWorldZone();
-			return(1);
-		}
-	}
+		}	// end while(!hitCount)
+	}	// end while(!startBattle)
 	else
 	{
 		startBattle = 0;	// do the init display
@@ -750,11 +1272,16 @@ int War_Main(void *parms)
 		DDBLT_WAIT,
 		NULL);
 
-	lpddsback->Blt(&(mainChar[WAI].warCharArea),
-		mainChar[WAI].lpddsbattlechar,
-		&src_area,
-		DDBLT_WAIT|DDBLT_KEYSRC,
-		NULL);
+	for (i=0; i<curNumChar; i++)
+	{
+		(mainChar[i].warCharSrcArea).left = (warCharIndex[i]<<3)+(warCharIndex[i]<<5);
+		(mainChar[i].warCharSrcArea).right = (mainChar[i].warCharSrcArea).left+WARCHARWIDTH;
+		lpddsback->Blt(&(mainChar[i].warCharArea),
+			mainChar[i].lpddsbattlechar,
+			&(mainChar[i].warCharSrcArea),
+			DDBLT_WAIT|DDBLT_KEYSRC,
+			NULL);
+	}
 
 	for(i=0; i<numMonsterInWar; i++)
 	{
@@ -770,7 +1297,7 @@ int War_Main(void *parms)
 
 	while(lpddsprimary->Flip(NULL, DDFLIP_WAIT)!=DD_OK);
 	OutMessage(20,330);
-	if(!WarPrintStatus(20, 20, numMonsterInWar))
+	if(!WarPrintStatus(20,20))
 		return (0);
 
 	Sleep(30);
@@ -779,32 +1306,32 @@ int War_Main(void *parms)
 
 int FromWorldZoneToWarZone()
 {
-	startBattle = 1;
-	warOver = NOTFINISHED;
-	hitCount = 0;
-	numMonsterDead = 0;
+	int i;
 
 	zone = WARZONE;
-	if (mainChar[WAI].state == ALIVE)
-		warCharIndex = WARMAINCHAR;
-	if (mainChar[WAI].state == DEAD)
-		warCharIndex = WARDEADCHAR;
-	src_area.left = (warCharIndex<<3)+(warCharIndex<<5);
-	src_area.right = src_area.left+WARCHARWIDTH;
-	src_area.bottom = WARCHARHEIGHT;
+	numSteps = 0;
+	for (i=0; i<curNumChar; i++)
+	{
+		if (mainChar[i].state == ALIVE)
+			warCharIndex[i] = WARMAINCHAR;
+		if (mainChar[i].state == DEAD)
+			warCharIndex[i] = WARDEADCHAR;
+		(mainChar[i].warCharSrcArea).left = (warCharIndex[i]<<3)+(warCharIndex[i]<<5);
+		(mainChar[i].warCharSrcArea).right = (mainChar[i].warCharSrcArea).left+WARCHARWIDTH;
+	}
 
 	fill_area.left = 0;
 	fill_area.top = 0;
 	fill_area.right = 640;
 	fill_area.bottom = 320;
 	
-	if (CheckLandType(GRASS))
+	if (CheckLandType(mainChar[WAI].charPos[X],mainChar[WAI].charPos[Y],GRASS))
 		backgroundIndex = GRASSBG;
-	else if(CheckLandType(VILLAGE))
+	else if(CheckLandType(mainChar[WAI].charPos[X],mainChar[WAI].charPos[Y],VILLAGE))
 		backgroundIndex = GRASSBG;
-	else if(CheckLandType(POISONLAND))
+	else if(CheckLandType(mainChar[WAI].charPos[X],mainChar[WAI].charPos[Y],POISONLAND))
 		backgroundIndex = POISONLANDBG;
-	else if(CheckLandType(RESTORELAND))
+	else if(CheckLandType(mainChar[WAI].charPos[X],mainChar[WAI].charPos[Y],RESTORELAND))
 		backgroundIndex = RESTORELANDBG;
 	else
 		return(0);
@@ -822,13 +1349,17 @@ int Game_Main(void *parms)
 	int strangeTemp[2] = {0,0};
 	int specialEffect = GRASS;
 	int encounter = 0;
+	int tempX, tempY;
+	int i, j;
+
+	landscapeFrameCount++;
 
 	if (KEY_DOWN(VK_ESCAPE))
 		PostMessage(main_window_handle, WM_DESTROY,0,0);
 
 	if (KEY_DOWN('S'))
 	{
-		if(!PrintStatus(mainChar, 40, 40))
+		if(!PrintStatus(/*mainChar,*/ 40, 40))
 			return (0);
 	}
 
@@ -856,8 +1387,58 @@ int Game_Main(void *parms)
 	else
 	{
 		mainChar[WAI].charDirection = STAY;
-		if (!firstRun)
+		if ((!firstRun) && (landscapeFrameCount < 3000))
+		{
+			
+/*			if (landscapeFrameCount == 3000)
+			{
+				landscapeFrameCount = 0;
+				for (int i=0; i<SCREEN_HEIGHT; i+=CELL_WIDTH)
+				{
+					for (int j=0; j<SCREEN_WIDTH; j+=CELL_WIDTH)
+					{
+						fill_area.top = i;
+						fill_area.left = j;
+						fill_area.bottom = i+CELL_WIDTH;
+						fill_area.right = j+CELL_WIDTH;
+					
+						tempX = worldMapOffset[0] + j/CELL_WIDTH;
+						tempY = worldMapOffset[1] + i/CELL_WIDTH;
+						
+						grassIndex = worldMap[tempX][tempY].landtype;
+						if (worldMap[tempX][tempY].numFrame != 1)
+						{
+							worldMap[tempX][tempY].curFrame++;
+							if(worldMap[tempX][tempY].curFrame == worldMap[tempX][tempY].numFrame)
+								worldMap[tempX][tempY].curFrame = 0;
+							else
+								grassIndex = worldMap[tempX][tempY].curFrame + NUM_OF_LANDSCAPES-1;
+						}
+					
+			
+						src_area.left = (grassIndex<<3)+(grassIndex<<5);
+						src_area.right = src_area.left+CELL_WIDTH;
+						lpddsback->Blt(&fill_area,
+							lpddsgrass,
+							&src_area,
+							DDBLT_WAIT,
+							NULL);
+					}
+				}
+				src_area.left = (charIndex<<3)+(charIndex<<5);
+				src_area.right = src_area.left+CELL_WIDTH;
+
+				lpddsback->Blt(&(mainChar[WAI].worldCharArea),//280,200,
+					mainChar[WAI].lpddscharacter,
+					&src_area,
+					DDBLT_WAIT|DDBLT_KEYSRC,
+					NULL);
+				
+				while(lpddsprimary->Flip(NULL, DDFLIP_WAIT)!=DD_OK);
+			}
+*/
 			return(1);
+		}
 		specialEffect = GRASS;
 		firstRun = 0;
 	}
@@ -922,6 +1503,7 @@ int Game_Main(void *parms)
 		break;
 	case STAY:
 //		strangeTemp = 0;
+
 		break;
 	default:
 		break;
@@ -979,40 +1561,92 @@ int Game_Main(void *parms)
 		}
 		else
 		{
-			for (int i=initVertDisplay; i<SCREEN_HEIGHT; i+=CELL_WIDTH)
+			if (landscapeFrameCount >= 5)
 			{
-				for (int j=initHoriDisplay; j<SCREEN_WIDTH; j+=CELL_WIDTH)
+				for (i=initVertDisplay; i<SCREEN_HEIGHT; i+=CELL_WIDTH)
 				{
-					fill_area.top = i;
-					fill_area.left = j;
-					fill_area.bottom = i+CELL_WIDTH;
-					fill_area.right = j+CELL_WIDTH;
-					
-					grassIndex = worldMap[worldMapOffset[0]+(j-initHoriDisplay)/CELL_WIDTH+strangeTemp[0]][worldMapOffset[1]+(i-initVertDisplay)/CELL_WIDTH+strangeTemp[1]];
-					src_area.left = (grassIndex<<3)+(grassIndex<<5);
-					src_area.right = src_area.left+CELL_WIDTH;
-		
-					lpddsback->Blt(&fill_area,
-						lpddsgrass,
-						&src_area,
-						DDBLT_WAIT,
-						NULL);
+					for (j=initHoriDisplay; j<SCREEN_WIDTH; j+=CELL_WIDTH)
+					{
+						fill_area.top = i;
+						fill_area.left = j;
+						fill_area.bottom = i+CELL_WIDTH;
+						fill_area.right = j+CELL_WIDTH;
+						
+						tempX = worldMapOffset[0]+(j-initHoriDisplay)/CELL_WIDTH+strangeTemp[0];
+						tempY = worldMapOffset[1]+(i-initVertDisplay)/CELL_WIDTH+strangeTemp[1];
+						
+						grassIndex = worldMap[tempX][tempY].landtype;
+			
+						if (worldMap[tempX][tempY].numFrame != 1)
+						{
+							if((++(worldMap[tempX][tempY].curFrame)) == worldMap[tempX][tempY].numFrame)
+							{
+								worldMap[tempX][tempY].curFrame = 0;
+							}
+							grassIndex += worldMap[tempX][tempY].frameSequence[(worldMap[tempX][tempY].curFrame)];
+						}
+						src_area.left = (grassIndex<<3)+(grassIndex<<5);
+						src_area.right = src_area.left+CELL_WIDTH;
+						lpddsback->Blt(&fill_area,
+							lpddsgrass,
+							&src_area,
+							DDBLT_WAIT,
+							NULL);
+					}
 				}
 			}
-/*		fill_area.top = 200;
-		fill_area.left = 280;
-		fill_area.bottom = 240;
-		fill_area.right = 320;
-*/
-			src_area.left = (charIndex<<3)+(charIndex<<5);
-			src_area.right = src_area.left+CELL_WIDTH;
+			else
+			{
+				for (i=initVertDisplay; i<SCREEN_HEIGHT; i+=CELL_WIDTH)
+				{
+					for (j=initHoriDisplay; j<SCREEN_WIDTH; j+=CELL_WIDTH)
+					{
+						fill_area.top = i;
+						fill_area.left = j;
+						fill_area.bottom = i+CELL_WIDTH;
+						fill_area.right = j+CELL_WIDTH;
+						
+						tempX = worldMapOffset[0]+(j-initHoriDisplay)/CELL_WIDTH+strangeTemp[0];
+						tempY = worldMapOffset[1]+(i-initVertDisplay)/CELL_WIDTH+strangeTemp[1];
+						
+						grassIndex = worldMap[tempX][tempY].landtype;
+			
+						grassIndex += worldMap[tempX][tempY].frameSequence[worldMap[tempX][tempY].curFrame];
+						src_area.left = (grassIndex<<3)+(grassIndex<<5);
+						src_area.right = src_area.left+CELL_WIDTH;
+						lpddsback->Blt(&fill_area,
+							lpddsgrass,
+							&src_area,
+							DDBLT_WAIT,
+							NULL);
+					}
+				}
+			}
+
 	
-			lpddsback->Blt(&(mainChar[WAI].worldCharArea),//280,200,
-			mainChar[WAI].lpddscharacter,
-			&src_area,
-			DDBLT_WAIT|DDBLT_KEYSRC,
-			//DDBLTFAST_WAIT | DDBLTFAST_SRCCOLORKEY);
-			NULL);
+			for (i=curNumChar-1; i>=0; i--)
+			{
+				(mainChar[i].worldCharSrcArea).left = (charIndex[i]<<3)+(charIndex[i]<<5);
+				(mainChar[i].worldCharSrcArea).right = (mainChar[i].worldCharSrcArea).left+WORLDCHARWIDTH;
+				(mainChar[i].worldCharSrcUpperArea).left = (mainChar[i].worldCharSrcArea).left;
+				(mainChar[i].worldCharSrcUpperArea).right = (mainChar[i].worldCharSrcArea).right;
+
+				lpddsback->Blt(&(mainChar[i].worldCharArea),//280,200,
+				mainChar[i].lpddscharacter,
+				&(mainChar[i].worldCharSrcArea),
+				DDBLT_WAIT|DDBLT_KEYSRC,
+				//DDBLTFAST_WAIT | DDBLTFAST_SRCCOLORKEY);
+				NULL);
+			}
+			for (i=curNumChar-1; i>=0; i--)
+			{
+				lpddsback->Blt(&(mainChar[i].worldCharUpperArea),//280,200,
+				mainChar[i].lpddscharacter,
+				&(mainChar[i].worldCharSrcUpperArea),
+				DDBLT_WAIT|DDBLT_KEYSRC,
+				//DDBLTFAST_WAIT | DDBLTFAST_SRCCOLORKEY);
+				NULL);
+			}
 		}
 
 		initHoriDisplay+=horizontalDisplayOffset;
@@ -1021,10 +1655,10 @@ int Game_Main(void *parms)
 //		lpdd->WaitForVerticalBlank(DDWAITVB_BLOCKBEGIN,0); // slows down so much with this
 
 		while(lpddsprimary->Flip(NULL, DDFLIP_WAIT)!=DD_OK);
-
+		if (landscapeFrameCount>=5)
+			landscapeFrameCount = 0;
 //		Sleep(500);
 	}
-
 	if(encounter)
 	{
 		FromWorldZoneToWarZone();
@@ -1062,51 +1696,134 @@ int ArmorInit()
 	return(1);
 }
 
+int MagicInit()
+{
+	magicList[FIRE].name = "Fire";
+	magicList[FIRE].MPneeded = 2;
+	magicList[FIRE].who = TO1ENEMY;
+	magicList[FIRE].status = TOHP;
+	magicList[FIRE].type = ATTACKMAGIC;
+	magicList[FIRE].power = 13;
+	magicList[FIRE].where = WARMAGIC;
+	magicList[FIRE].dependOn = INTMAGIC;
+
+	magicList[CURE].name = "Cure";
+	magicList[CURE].MPneeded = 3;
+	magicList[CURE].who = TO1CHAR;
+	magicList[CURE].status = TOHP;
+	magicList[CURE].type = REFRESHMAGIC;
+	magicList[CURE].power = 30;
+	magicList[CURE].where = BOTHMAGIC;
+	magicList[CURE].dependOn = SPIRITMAGIC;
+
+	return(1);
+}
+
 int CharacterInit()
 {
 	///////////////////////////////////////////////////////
 	// SET main character attributes
 	///////////////////////////////////////////////////////
+	int i;
+
 	mainChar = new MAIN_CHAR[NUMCHAR];
 
 	sprintf(mainChar[WAI].name, "Wai");
-	mainChar[WAI].charPos[X] = 39;
-	mainChar[WAI].charPos[Y] = 29;
+	mainChar[WAI].charPos[X] = 40;
+	mainChar[WAI].charPos[Y] = 30;
 	mainChar[WAI].charDirection = STAY;
 
 	mainChar[WAI].state = ALIVE;
 	mainChar[WAI].LV = 1;
 	mainChar[WAI].exp = 4;
 	mainChar[WAI].gold = 80;
-	mainChar[WAI].nextLV = 6;
+	mainChar[WAI].nextLV = 8;
 
 	mainChar[WAI].maxHP = 15;
-	mainChar[WAI].HP = 15;
 	mainChar[WAI].maxMP = 3;
-	mainChar[WAI].MP = 3;
-	mainChar[WAI].STR = 12;
-	mainChar[WAI].DEX = 10;
+	mainChar[WAI].STR = 15;
+	mainChar[WAI].DEX = 12;
 	mainChar[WAI].INT = 8;
 	mainChar[WAI].SPIRIT = 8;
-	mainChar[WAI].CONS = 10;
+	mainChar[WAI].CONS = 12;
 
-//	mainChar[WAI].weapon = new WEAPON;
 	mainChar[WAI].weapon = &(weaponList[CLUB]);
 	mainChar[WAI].armor = &(armorList[CLOTHCLOTHES]);
-
-	mainChar[WAI].ATK = mainChar[WAI].STR/2 + (mainChar[WAI].weapon)->attackPower;
-	mainChar[WAI].DEF = mainChar[WAI].DEX/2 + (mainChar[WAI].armor)->defPower;
+	mainChar[WAI].magic[0] = FIRE;
+//	mainChar[WAI].magic[1] = CURE;
+	mainChar[WAI].numMagic = 1;
+	
 
 	(mainChar[WAI].worldCharArea).top = 200;
 	(mainChar[WAI].worldCharArea).left = 280;
 	(mainChar[WAI].worldCharArea).bottom = 240;
 	(mainChar[WAI].worldCharArea).right = 320;
+	(mainChar[WAI].worldCharUpperArea).top = (mainChar[WAI].worldCharArea).top - CELL_WIDTH;
+	(mainChar[WAI].worldCharUpperArea).left = (mainChar[WAI].worldCharArea).left;
+	(mainChar[WAI].worldCharUpperArea).bottom = (mainChar[WAI].worldCharArea).bottom - CELL_WIDTH;
+	(mainChar[WAI].worldCharUpperArea).right = (mainChar[WAI].worldCharArea).right;
 
-	(mainChar[WAI].warCharArea).top = 200;
-	(mainChar[WAI].warCharArea).left = 560;
-	(mainChar[WAI].warCharArea).bottom = 280;
-	(mainChar[WAI].warCharArea).right = 600;
+	sprintf(mainChar[RAY].name, "Ray");
+	mainChar[RAY].charPos[X] = mainChar[WAI].charPos[X];
+	mainChar[RAY].charPos[Y] = mainChar[WAI].charPos[Y];
+	mainChar[RAY].charDirection = STAY;
 
+	mainChar[RAY].state = ALIVE;
+	mainChar[RAY].LV = 1;
+	mainChar[RAY].exp = 3;
+	mainChar[RAY].gold = 0;
+	mainChar[RAY].nextLV = 7;
+
+	mainChar[RAY].maxHP = 13;
+	mainChar[RAY].maxMP = 5;
+	mainChar[RAY].STR = 12;
+	mainChar[RAY].DEX = 10;
+	mainChar[RAY].INT = 8;
+	mainChar[RAY].SPIRIT = 13;
+	mainChar[RAY].CONS = 10;
+
+//	mainChar[RAY].weapon = new WEAPON;
+	mainChar[RAY].weapon = &(weaponList[CLUB]);
+	mainChar[RAY].armor = &(armorList[CLOTHCLOTHES]);
+	mainChar[RAY].magic[0] = CURE;
+	mainChar[RAY].numMagic = 1;
+
+	for (i=0; i<NUMCHAR; i++)
+	{
+		mainChar[i].HP = mainChar[i].maxHP;
+		mainChar[i].MP = mainChar[i].maxMP;
+		mainChar[i].ATK = mainChar[i].STR/2 + (mainChar[i].weapon)->attackPower;
+		mainChar[i].DEF = mainChar[i].DEX/2 + (mainChar[i].armor)->defPower;
+		(mainChar[i].warCharSrcArea).top = 0;
+		(mainChar[i].warCharSrcArea).left = 0;
+		(mainChar[i].warCharSrcArea).right = WARCHARWIDTH;
+		(mainChar[i].warCharSrcArea).bottom = WARCHARHEIGHT;
+		(mainChar[i].worldCharArea).bottom = (mainChar[WAI].worldCharArea).bottom + (mainChar[i].charPos[Y]-mainChar[WAI].charPos[Y])*CELL_WIDTH;
+		(mainChar[i].worldCharArea).left = (mainChar[WAI].worldCharArea).left + (mainChar[i].charPos[X]-mainChar[WAI].charPos[X])*WORLDCHARWIDTH;
+		(mainChar[i].worldCharArea).top = (mainChar[i].worldCharArea).bottom - CELL_WIDTH;
+		(mainChar[i].worldCharArea).right = (mainChar[i].worldCharArea).left + WORLDCHARWIDTH;
+		(mainChar[i].worldCharUpperArea).bottom = (mainChar[i].worldCharArea).bottom - CELL_WIDTH;
+		(mainChar[i].worldCharUpperArea).left = (mainChar[i].worldCharArea).left;
+		(mainChar[i].worldCharUpperArea).top = (mainChar[i].worldCharArea).top - CELL_WIDTH;
+		(mainChar[i].worldCharUpperArea).right = (mainChar[i].worldCharArea).right;
+		(mainChar[i].worldCharSrcArea).top = CELL_WIDTH;
+		(mainChar[i].worldCharSrcArea).bottom = WORLDCHARHEIGHT;
+		(mainChar[i].worldCharSrcUpperArea).top = 0;
+		(mainChar[i].worldCharSrcUpperArea).bottom = CELL_WIDTH;
+
+		if (i<2)
+		{
+			(mainChar[i].warCharArea).top = 160+i*70;
+			(mainChar[i].warCharArea).left = 420+i*70;
+		}
+		else
+		{
+			(mainChar[i].warCharArea).top = 160 -(i-1)*70;
+			(mainChar[i].warCharArea).left = 420+(i-1)*70;
+		}
+		(mainChar[i].warCharArea).right = (mainChar[i].warCharArea).left+40;
+		(mainChar[i].warCharArea).bottom = (mainChar[i].warCharArea).top+80;
+	}
 	return(1);
 }
 
@@ -1128,31 +1845,27 @@ int MonsterInit()
 		monster[MECAR][i].gold = 5;
 
 		monster[MECAR][i].maxHP = 7;
-		monster[MECAR][i].HP = 7;
 		monster[MECAR][i].maxMP = 0;
-		monster[MECAR][i].MP = 0;
 		monster[MECAR][i].DEX = 8;
-		monster[MECAR][i].INT = 2;
-		monster[MECAR][i].SPIRIT = 1;
+		monster[MECAR][i].INT = 3;
+		monster[MECAR][i].SPIRIT = 2;
 
 		monster[MECAR][i].ATK = 7;
-		monster[MECAR][i].DEF = 3;
+		monster[MECAR][i].DEF = 5;
 
 		sprintf(monster[BIRD][i].name, "Killer Bird %d", i+1);
 
-		monster[BIRD][i].exp = 1;
+		monster[BIRD][i].exp = 2;
 		monster[BIRD][i].gold = 7;
 
-		monster[BIRD][i].maxHP = 9;
-		monster[BIRD][i].HP = 9;
+		monster[BIRD][i].maxHP = 8;
 		monster[BIRD][i].maxMP = 0;
-		monster[BIRD][i].MP = 0;
 		monster[BIRD][i].DEX = 9;
-		monster[BIRD][i].INT = 2;
-		monster[BIRD][i].SPIRIT = 1;
+		monster[BIRD][i].INT = 5;
+		monster[BIRD][i].SPIRIT = 2;
 
-		monster[BIRD][i].ATK = 6;
-		monster[BIRD][i].DEF = 3;
+		monster[BIRD][i].ATK = 8;
+		monster[BIRD][i].DEF = 6;
 
 	}
 
@@ -1160,6 +1873,8 @@ int MonsterInit()
 	{
 		for (i=0; i<MAXMONSTERINWAR; i++)
 		{
+			monster[j][i].HP = monster[j][i].maxHP;
+			monster[j][i].MP = monster[j][i].maxMP;
 			monster[j][i].srcArea.left = 0;
 			monster[j][i].srcArea.right = WARMONSTERWIDTH;
 			monster[j][i].srcArea.top = 0;
@@ -1185,13 +1900,21 @@ int MonsterInit()
 
 int InitBitmap()
 {
-	if(!LoadImage(mainChar[WAI].lpddscharacter, "..\\Bitmaps\\Characters\\RPGmainChar.bmp",MAINCHAR,CELL_WIDTH,CELL_WIDTH))
+	if(!LoadImage(mainChar[WAI].lpddscharacter, "..\\Bitmaps\\Characters\\RPGmainChar.bmp",MAINCHAR,WORLDCHARWIDTH,WORLDCHARHEIGHT))
 		return(0);
-	if(!LoadImage(mainChar[WAI].lpddscharacter, "..\\Bitmaps\\Characters\\deadChar.bmp",DEADCHAR,CELL_WIDTH,CELL_WIDTH))
+	if(!LoadImage(mainChar[WAI].lpddscharacter, "..\\Bitmaps\\Characters\\deadChar.bmp",DEADCHAR,WORLDCHARWIDTH,WORLDCHARHEIGHT))
 		return(0);
 	if(!LoadImage(mainChar[WAI].lpddsbattlechar, "..\\Bitmaps\\WarCharacters\\mainChar.bmp",WARMAINCHAR,WARCHARWIDTH,WARCHARHEIGHT))
 		return(0);
-	if(!LoadImage(mainChar[WAI].lpddsbattlechar, "..\\Bitmaps\\WarCharacters\\mainChar.bmp",WARDEADCHAR,WARCHARWIDTH,WARCHARHEIGHT))
+	if(!LoadImage(mainChar[WAI].lpddsbattlechar, "..\\Bitmaps\\WarCharacters\\deadChar.bmp",WARDEADCHAR,WARCHARWIDTH,WARCHARHEIGHT))
+		return(0);
+	if(!LoadImage(mainChar[RAY].lpddscharacter, "..\\Bitmaps\\Characters\\mainRay.bmp",MAINCHAR,WORLDCHARWIDTH,WORLDCHARHEIGHT))
+		return(0);
+	if(!LoadImage(mainChar[RAY].lpddscharacter, "..\\Bitmaps\\Characters\\rayDeadChar.bmp",DEADCHAR,WORLDCHARWIDTH,WORLDCHARHEIGHT))
+		return(0);
+	if(!LoadImage(mainChar[RAY].lpddsbattlechar, "..\\Bitmaps\\WarCharacters\\rayMainChar.bmp",WARMAINCHAR,WARCHARWIDTH,WARCHARHEIGHT))
+		return(0);
+	if(!LoadImage(mainChar[RAY].lpddsbattlechar, "..\\Bitmaps\\WarCharacters\\rayDeadChar.bmp",WARDEADCHAR,WARCHARWIDTH,WARCHARHEIGHT))
 		return(0);
 
 	if(!LoadImage(lpddsgrass, "..\\Bitmaps\\Landscapes\\grassLand.bmp",GRASS,CELL_WIDTH,CELL_WIDTH))
@@ -1203,6 +1926,10 @@ int InitBitmap()
 	if(!LoadImage(lpddsgrass, "..\\Bitmaps\\Landscapes\\poisonLand.bmp",POISONLAND,CELL_WIDTH,CELL_WIDTH))
 		return(0);
 	if(!LoadImage(lpddsgrass, "..\\Bitmaps\\Landscapes\\restoreLand.bmp",RESTORELAND,CELL_WIDTH,CELL_WIDTH))
+		return(0);
+	if(!LoadImage(lpddsgrass, "..\\Bitmaps\\Landscapes\\water2.bmp",WATER2,CELL_WIDTH,CELL_WIDTH))
+		return(0);
+	if(!LoadImage(lpddsgrass, "..\\Bitmaps\\Landscapes\\water3.bmp",WATER3,CELL_WIDTH,CELL_WIDTH))
 		return(0);
 
 	if(!LoadImage(lpddsbackground, "..\\Bitmaps\\Backgrounds\\grass.bmp",GRASSBG,BACKGROUNDWIDTH,BACKGROUNDHEIGHT))
@@ -1220,6 +1947,37 @@ int InitBitmap()
 	return(1);
 }
 
+HRESULT CALLBACK EnumDisplayModeCallback(LPDDSURFACEDESC pDDSD, LPVOID Context)
+{
+	DWORD w = pDDSD->dwWidth;
+	DWORD h = pDDSD->dwHeight;
+	auto depth = pDDSD->ddpfPixelFormat.dwRGBBitCount;
+
+/*	DisplayMode** DMList = (DisplayMode**)Context;
+
+	DisplayMode* NewDM = new DisplayMode;
+	if (NewDM)
+	{
+		NewDM->Width = pDDSD->dwWidth;
+		NewDM->Height = pDDSD->dwHeight;
+		NewDM->Depth = pDDSD->ddpfPixelFormat.dwRGBBitCount;
+
+		NewDM->Next = NULL;
+	}
+
+	if (!(*DMList))
+		*DMList = NewDM;
+	else
+	{
+		for (DisplayMode* TheDM = *DMList; TheDM->Next; TheDM = TheDM->Next)
+			;
+
+		TheDM->Next = NewDM;
+	}
+	*/
+	return DDENUMRET_OK;
+}
+
 ///////////////////////////////////////////////////////////////////
 //
 //	Game_Init()
@@ -1227,15 +1985,21 @@ int InitBitmap()
 ///////////////////////////////////////////////////////////////////
 int Game_Init(void *parms)
 {
+	int i;
 	// initialize variables
 	WeaponInit();
 
 	ArmorInit();
-	
+
+	MagicInit();
+
+	for (i=0; i<NUMCHAR; i++)
+		charIndex[i] = MAINCHAR;
+	curNumChar = 2;
 	CharacterInit();
 
 	MonsterInit();
-
+	
 	///////////////////////////////////////////////////////
 	// Initialize map data
 	///////////////////////////////////////////////////////
@@ -1247,46 +2011,89 @@ int Game_Init(void *parms)
 	
 	// try outputing the map to a file
 	if(!ReadMapFromFile(worldMap, szWorldMapFile, worldMapWidth, worldMapHeight))
+	{
+		sprintf(buf, "Error reading map!");
 		return(0);
+	}
 
 
 // your code goes here
 	if(FAILED(DirectDrawCreate(NULL,&lpdd,NULL)))
+	{
+		sprintf(buf, "Error Creating DD Obj!");
 		return(0);
+	}
 	if(FAILED(lpdd->SetCooperativeLevel(main_window_handle, 
 		DDSCL_ALLOWREBOOT | DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN)))
+	{
+		sprintf(buf, "Error Setting CoopLevel!");
 		return(0);
+	}
+
+//	lpdd->EnumDisplayModes(0, NULL, NULL, (LPDDENUMMODESCALLBACK)EnumDisplayModeCallback);
+
 	if(FAILED(lpdd->SetDisplayMode(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_BIT)))
-		return(0);
+	{
+		SCREEN_BIT = 16;
+		if(FAILED(lpdd->SetDisplayMode(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_BIT)))
+		{
+			sprintf(buf, "Error Setting Display Mode!");
+			return(0);
+		}
+	}
 	memset(&ddsd,0,sizeof(ddsd));
 	ddsd.dwSize = sizeof(ddsd);
 	ddsd.dwFlags = DDSD_CAPS | DDSD_BACKBUFFERCOUNT;
 	ddsd.ddsCaps.dwCaps = 
 		DDSCAPS_PRIMARYSURFACE | DDSCAPS_FLIP | DDSCAPS_COMPLEX;
-	ddsd.dwBackBufferCount = 1;
+	ddsd.dwBackBufferCount = NUMBUFFER;
 
 	if(FAILED(lpdd->CreateSurface(&ddsd, &lpddsprimary,NULL)))
+	{
+		sprintf(buf, "Error creating Primary Surface!");
 		return(0);
+	}
 
 	ddscaps.dwCaps = DDSCAPS_BACKBUFFER;
 
 	if(lpddsprimary->GetAttachedSurface(&ddscaps, &lpddsback)!=DD_OK)
+	{
+		sprintf(buf,"Error Creating BackBuffer!");
 		return(0);
+	}
 
-	if(!CreateOffScreen(lpddsgrass, NUM_OF_LANDSCAPES*CELL_WIDTH, CELL_WIDTH))
+	if(!CreateOffScreen(lpddsgrass, (NUM_OF_LANDSCAPES+NUMOFANIMLANDSCAPES)*CELL_WIDTH, CELL_WIDTH))
+	{
+		sprintf(buf,"Error Creating Offscreen for Landscapes!");
 		return(0);
+	}
+	for(i=0; i<NUMCHAR; i++)
+	{
+		if(!CreateOffScreen(mainChar[i].lpddscharacter, NUMCHARMAPS*WORLDCHARWIDTH, WORLDCHARHEIGHT))
+		{
+			sprintf(buf, "Error Creating Offscreen for World Char!");
+			return(0);
+		}
+		if(!CreateOffScreen(mainChar[i].lpddsbattlechar, NUMWARCHARMAPS*WARCHARWIDTH, WARCHARHEIGHT))
+		{
+			sprintf(buf, "Error Creating Offscreen for War Char!");
+			return(0);
+		}
+	}
+	for (i=0; i<NUMMONSTER; i++)
+	{
+		if(!CreateOffScreen(lpddswarmonster[i], NUMMONSTERMAPS*WARMONSTERWIDTH, WARMONSTERHEIGHT))
+		{
+			sprintf(buf, "Error Creating Offscreen for Monster!");
+				return(0);
+		}
+	}
 	if(!CreateOffScreen(lpddsbackground, NUMOFBACKGROUNDS*BACKGROUNDWIDTH, BACKGROUNDHEIGHT))
+	{
+		sprintf(buf, "Error Creating Offscreen for Background!");
 		return(0);
-
-	if(!CreateOffScreen(mainChar[WAI].lpddscharacter, NUMCHARMAPS*CELL_WIDTH, CELL_WIDTH))
-		return(0);
-	if(!CreateOffScreen(mainChar[WAI].lpddsbattlechar, NUMWARCHARMAPS*WARCHARWIDTH, WARCHARHEIGHT))
-		return(0);
-	if(!CreateOffScreen(lpddswarmonster[MECAR], NUMMONSTERMAPS*WARMONSTERWIDTH, WARMONSTERHEIGHT))
-		return(0);
-	if(!CreateOffScreen(lpddswarmonster[BIRD], NUMMONSTERMAPS*WARMONSTERWIDTH, WARMONSTERHEIGHT))
-		return(0);
-	for (int i=0; i<NUMMONSTER; i++)
+	}
+	for (i=0; i<NUMMONSTER; i++)
 	{
 		for (int j=0; j<MAXMONSTERINWAR; j++)
 		{
@@ -1295,21 +2102,29 @@ int Game_Init(void *parms)
 	}
 
 	DDCOLORKEY	key;
-	key.dwColorSpaceLowValue = _RGB24BIT(1,1,1);//1;
-//	key.dwColorSpaceHighValue = 1;//_RGB24BIT(255,255,255);//(1,1,1);
+	key.dwColorSpaceLowValue = _RGB24BIT(8,8,8);
+//	key.dwColorSpaceHighValue = _RGB24BIT(8,8,8);
 	(mainChar[WAI].lpddscharacter)->SetColorKey(DDCKEY_SRCBLT, &key);
 	(mainChar[WAI].lpddsbattlechar)->SetColorKey(DDCKEY_SRCBLT, &key);
+	(mainChar[RAY].lpddscharacter)->SetColorKey(DDCKEY_SRCBLT, &key);
+	(mainChar[RAY].lpddsbattlechar)->SetColorKey(DDCKEY_SRCBLT, &key);
 	(lpddswarmonster[MECAR])->SetColorKey(DDCKEY_SRCBLT, &key);
 	(lpddswarmonster[BIRD])->SetColorKey(DDCKEY_SRCBLT, &key);
 
 	/////////////// LOADING BITMAPS //////////////////////////
 	if(!InitBitmap())
+	{
+		sprintf(buf, "Error Init Bitmap!");
 		return(0);
+	}
 
 	RECT cliplist[1] = {{0,0,SCREEN_WIDTH, SCREEN_HEIGHT}};
 	lpddclip = DDAttachClipper(lpddsback, 1, cliplist);
 	if(lpddclip==NULL)
+	{
+		sprintf(buf, "Error Attaching Clipper!");
 		return(0);
+	}
 
 	src_area.top = 0;
 	src_area.bottom = CELL_WIDTH;
@@ -1320,6 +2135,32 @@ int Game_Init(void *parms)
 	warMessageBox.bottom = SCREEN_HEIGHT;
 	warMessageBox.left = 0;
 	warMessageBox.right = SCREEN_WIDTH;
+
+	HDC hdcSurf;
+	if(FAILED(lpddsprimary->GetDC(&hdcSurf)))
+	{
+		if (hdcSurf)
+			lpddsprimary->ReleaseDC(hdcSurf);
+		sprintf(buf, "Error Getting DC!");
+		return(0);
+	}
+
+	TEXTMETRIC tm;
+	int h;
+	GetTextMetrics(hdcSurf, &tm);
+	h = tm.tmHeight + tm.tmExternalLeading;
+
+	warInstantMessageBox.top = 0;
+	warInstantMessageBox.bottom = h;
+	warInstantMessageBox.left = 0;
+	warInstantMessageBox.right = 640;
+
+	lpddsprimary->ReleaseDC(hdcSurf);
+
+	srand((unsigned)time(NULL));
+	numSteps = 0;
+	landscapeFrameCount = 0;
+	numCharDead = 0;
 	// return success
 	return(1);
 } // end Game_Init
@@ -1333,15 +2174,19 @@ int Game_Shutdown(void *parms)
 
 // your code goes here
 	int i;
-	if (mainChar[WAI].lpddscharacter)
-		(mainChar[WAI].lpddscharacter)->Release();
-	if (mainChar[WAI].lpddsbattlechar)
-		(mainChar[WAI].lpddsbattlechar)->Release();
+	for (i=0; i<curNumChar; i++)
+	{
+		if (mainChar[i].lpddscharacter)
+			(mainChar[i].lpddscharacter)->Release();
+		if (mainChar[i].lpddsbattlechar)
+			(mainChar[i].lpddsbattlechar)->Release();
+	}
 	for (i=0; i<NUMMONSTER; i++)
 	{
 		if (lpddswarmonster[i])
 			lpddswarmonster[i]->Release();
 	}
+
 	if (lpddsbackground)
 		lpddsbackground->Release();
 	if (lpddsgrass)
@@ -1350,6 +2195,10 @@ int Game_Shutdown(void *parms)
 		lpddsprimary->Release();
 	if (lpdd!=NULL)
 		lpdd->Release();
+	delete [] monster;
+	delete [] worldMap;
+	delete [] mainChar;
+
 // return success
 	return(1);
 } // end Game_Shutdown
@@ -1424,7 +2273,7 @@ winclass.cbWndExtra		= 0;
 winclass.hInstance		= hinstance;
 winclass.hIcon			= LoadIcon(NULL, IDI_APPLICATION);
 winclass.hCursor		= LoadCursor(NULL, IDC_ARROW);
-winclass.hbrBackground	= GetStockObject(BLACK_BRUSH);
+winclass.hbrBackground	= (HBRUSH)GetStockObject(BLACK_BRUSH);
 winclass.lpszMenuName	= NULL; 
 winclass.lpszClassName	= WINDOW_CLASS_NAME;
 
@@ -1434,7 +2283,7 @@ if (!RegisterClass(&winclass))
 
 // create the window
 if (!(hwnd = CreateWindow(WINDOW_CLASS_NAME, // class
-						  "RPG V2.0",	 // title
+						  "RPG V3.0",	 // title
 						  WS_POPUP | WS_VISIBLE,
 					 	  0,0,	   // x,y
 						  SCREEN_WIDTH,  // width
@@ -1452,7 +2301,7 @@ main_instance      = hinstance;
 
 // perform all game console specific initialization
 if(!Game_Init())
-	MessageBox(main_window_handle, "Wrong!", "MB Test",MB_OK);
+	MessageBox(main_window_handle, buf, "MB Test",MB_OK);
 else
 	MessageBox(main_window_handle, "Right!", "MB Test", MB_OK);
 

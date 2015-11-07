@@ -6,25 +6,26 @@
 //////////////////////////////////////////////////////////////
 
 #include <windows.h>
-#include <stdio.h>
+#include <windowsx.h> 
+#include <mmsystem.h>
+#include <iostream.h> // include important C/C++ stuff
+#include <conio.h>
+#include <stdlib.h>
+#include <malloc.h>
+#include <memory.h>
 #include <string.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <math.h>
+#include <io.h>
+#include <fcntl.h>
+#include <time.h>
+#include <ddraw.h>
 #include "resource.h"
+#include "..\source\RPG.h"
 
 #define DISPLAYOFFAMOUNT	10
-
-#define UP		1
-#define DOWN	2
-#define LEFT	3
-#define RIGHT	4
-#define STAY	0
-
-#define CELLWIDTH	40
-#define LANDSCAPENUM 5
-#define GRASS		0
-#define WATER		4
-#define VILLAGE		3
-#define POISONLAND	1
-#define RESTORELAND	2
+#define NUMWATERFRAME		4
 
 #define NONEACTIVE	0
 #define MODIFY		1
@@ -56,11 +57,10 @@ HDC hdc, memDC;
 HBITMAP hGrass, hWater, hVillage, hPoisonLand, hRestoreLand;
 HWND	hWnd;
 
-char    buf[80];
 char	szFileName[80];
 char	*sourceDir = "..\\Map\\";
 
-int **editMap;
+MAPTILE **editMap;
 int mapWidth=0; 
 int mapHeight=0;
 int upperLeftCorner[2] = {0,0};
@@ -75,9 +75,13 @@ int insertType = 0;
 
 int ModifyMap(int x, int y, int landscape)
 {
-	if ((x<0)||(y<0)||(x>=mapWidth)||(y>=mapHeight)||(landscape>=LANDSCAPENUM)||(landscape<0))
+	if ((x<0)||(y<0)||(x>=mapWidth)||(y>=mapHeight)||(landscape>=NUM_OF_LANDSCAPES)||(landscape<0))
 		return(0);
-	editMap[x][y] = landscape;
+	editMap[x][y].landtype = landscape;
+	if (landscape == WATER)
+		editMap[x][y].numFrame = NUMWATERFRAME;
+	else
+		editMap[x][y].numFrame = 1;
 	return(1);
 }
 
@@ -93,7 +97,7 @@ int ModifyRangeMap(int fromX, int toX, int fromY, int toY, int landscape)
 	}
 	return(1);
 }
-int ReadMapFromFile(int **&map, LPSTR szFileName, int &width, int &height)
+int ReadMapFromFile(MAPTILE **&map, LPSTR szFileName, int &width, int &height)
 {
 	int i;
 	FILE *fp;
@@ -105,16 +109,18 @@ int ReadMapFromFile(int **&map, LPSTR szFileName, int &width, int &height)
 	fscanf(fp, "%d %d", &width, &height);
 	
 	// allocating memory for the map
-	map = new int*[width];
+	map = new MAPTILE*[width];
 	for(i=0; i<width; i++)
-		map[i] = new int[height];
+		map[i] = new MAPTILE[height];
 
 	for (int j=0; j<height; j++)
 	{
 		fscanf(fp,"\n");
 		for (i=0; i<width-1; i++)
-			fscanf(fp,"%d ", &map[i][j]);
-		fscanf(fp, "%d", &map[width-1][j]);
+		{
+			fscanf(fp,"%d,%d,%d,%d", &(map[i][j].landtype),&(map[i][j].objtype),&(map[i][j].index),&(map[i][j].numFrame));
+		}
+		fscanf(fp, "%d,%d,%d,%d", &(map[width-1][j].landtype),&(map[width-1][j].objtype),&(map[width-1][j].index),&(map[width-1][j].numFrame));
 	}
 
 	fclose(fp);
@@ -122,7 +128,7 @@ int ReadMapFromFile(int **&map, LPSTR szFileName, int &width, int &height)
 	return(1);
 }
 
-int WriteMapToFile(int **map, LPSTR szFileName, int width, int height)
+int WriteMapToFile(MAPTILE **map, LPSTR szFileName, int width, int height)
 {
 	int i;
 	FILE *fp;
@@ -134,8 +140,12 @@ int WriteMapToFile(int **map, LPSTR szFileName, int width, int height)
 	{
 		fprintf(fp,"\n");
 		for (i=0; i<width-1; i++)
-			fprintf(fp,"%d ", map[i][j]);
-		fprintf(fp, "%d", map[width-1][j]);
+		{
+			fprintf(fp, "%d,%d,%d,%d ", map[i][j].landtype, map[i][j].objtype, map[i][j].index, map[i][j].numFrame);
+			
+		}
+		fprintf(fp, "%d,%d,%d,%d", map[width-1][j].landtype, map[width-1][j].objtype, map[width-1][j].index, map[width-1][j].numFrame);
+
 	}
 
 	fclose(fp);
@@ -161,32 +171,32 @@ int DrawMap(int left, int top)
 		{
 			if(i == mapWidth)
 				break;
-			switch (editMap[i][j])
+			switch (editMap[i][j].landtype)
 			{
 			case GRASS:
 				SelectObject(memDC, hGrass);
-				BitBlt(hdc, ((i-left)*CELLWIDTH), ((j-top)*CELLWIDTH),
-					CELLWIDTH, CELLWIDTH, memDC, 0, 0, SRCCOPY);
+				BitBlt(hdc, ((i-left)*CELL_WIDTH), ((j-top)*CELL_WIDTH),
+					CELL_WIDTH, CELL_WIDTH, memDC, 0, 0, SRCCOPY);
 				break;
 			case WATER:
 				SelectObject(memDC, hWater);
-				BitBlt(hdc, ((i-left)*CELLWIDTH), ((j-top)*CELLWIDTH),
-					CELLWIDTH, CELLWIDTH, memDC, 0, 0, SRCCOPY);
+				BitBlt(hdc, ((i-left)*CELL_WIDTH), ((j-top)*CELL_WIDTH),
+					CELL_WIDTH, CELL_WIDTH, memDC, 0, 0, SRCCOPY);
 				break;
 			case VILLAGE:
 				SelectObject(memDC, hVillage);
-				BitBlt(hdc, ((i-left)*CELLWIDTH), ((j-top)*CELLWIDTH),
-					CELLWIDTH, CELLWIDTH, memDC, 0, 0, SRCCOPY);
+				BitBlt(hdc, ((i-left)*CELL_WIDTH), ((j-top)*CELL_WIDTH),
+					CELL_WIDTH, CELL_WIDTH, memDC, 0, 0, SRCCOPY);
 				break;
 			case POISONLAND:
 				SelectObject(memDC, hPoisonLand);
-				BitBlt(hdc, ((i-left)*CELLWIDTH), ((j-top)*CELLWIDTH),
-					CELLWIDTH, CELLWIDTH, memDC, 0, 0, SRCCOPY);
+				BitBlt(hdc, ((i-left)*CELL_WIDTH), ((j-top)*CELL_WIDTH),
+					CELL_WIDTH, CELL_WIDTH, memDC, 0, 0, SRCCOPY);
 				break;
 			case RESTORELAND:
 				SelectObject(memDC, hRestoreLand);
-				BitBlt(hdc, ((i-left)*CELLWIDTH), ((j-top)*CELLWIDTH),
-					CELLWIDTH, CELLWIDTH, memDC, 0, 0, SRCCOPY);
+				BitBlt(hdc, ((i-left)*CELL_WIDTH), ((j-top)*CELL_WIDTH),
+					CELL_WIDTH, CELL_WIDTH, memDC, 0, 0, SRCCOPY);
 				break;
 			}
 		}
@@ -229,11 +239,11 @@ int AnimateMap()
 		break;
 	case UP:
 		verticalDisplayOffset = DISPLAYOFFAMOUNT;
-		initVertDisplay = verticalDisplayOffset-CELLWIDTH;
+		initVertDisplay = verticalDisplayOffset-CELL_WIDTH;
 		break;
 	case LEFT:
 		horizontalDisplayOffset = DISPLAYOFFAMOUNT;
-		initHoriDisplay = horizontalDisplayOffset-CELLWIDTH;
+		initHoriDisplay = horizontalDisplayOffset-CELL_WIDTH;
 		break;
 	case RIGHT:
 		strangeTemp[0] = -1;
@@ -243,48 +253,48 @@ int AnimateMap()
 
 	}
 	
-	for(int rep=0; rep<CELLWIDTH/DISPLAYOFFAMOUNT; rep++)
+	for(int rep=0; rep<CELL_WIDTH/DISPLAYOFFAMOUNT; rep++)
 	{
-		for (int j=initVertDisplay; j<480; j+=CELLWIDTH)
+		for (int j=initVertDisplay; j<480; j+=CELL_WIDTH)
 		{
-			if((tempY=top+(j-initVertDisplay)/CELLWIDTH+strangeTemp[1])==mapHeight)
+			if((tempY=top+(j-initVertDisplay)/CELL_WIDTH+strangeTemp[1])==mapHeight)
 			{
 				needRedraw = 1;
 				break;
 			}
-			for (i=initHoriDisplay; i<640; i+=CELLWIDTH)
+			for (i=initHoriDisplay; i<640; i+=CELL_WIDTH)
 			{
-				if((tempX=left+(i-initHoriDisplay)/CELLWIDTH+strangeTemp[0]) == mapWidth)
+				if((tempX=left+(i-initHoriDisplay)/CELL_WIDTH+strangeTemp[0]) == mapWidth)
 				{
 					needRedraw = 1;
 					break;
 				}
-				switch (editMap[tempX][tempY])
+				switch (editMap[tempX][tempY].landtype)
 				{
 				case GRASS:
 					SelectObject(memDC, hGrass);
 					BitBlt(hdc, i, j,
-						CELLWIDTH, CELLWIDTH, memDC, 0, 0, SRCCOPY);
+						CELL_WIDTH, CELL_WIDTH, memDC, 0, 0, SRCCOPY);
 					break;
 				case WATER:
 					SelectObject(memDC, hWater);
 					BitBlt(hdc, i, j,
-						CELLWIDTH, CELLWIDTH, memDC, 0, 0, SRCCOPY);
+						CELL_WIDTH, CELL_WIDTH, memDC, 0, 0, SRCCOPY);
 					break;
 				case VILLAGE:
 					SelectObject(memDC, hVillage);
 					BitBlt(hdc, i, j,
-						CELLWIDTH, CELLWIDTH, memDC, 0, 0, SRCCOPY);
+						CELL_WIDTH, CELL_WIDTH, memDC, 0, 0, SRCCOPY);
 					break;
 				case POISONLAND:
 					SelectObject(memDC, hPoisonLand);
 					BitBlt(hdc, i, j,
-						CELLWIDTH, CELLWIDTH, memDC, 0, 0, SRCCOPY);
+						CELL_WIDTH, CELL_WIDTH, memDC, 0, 0, SRCCOPY);
 					break;
 				case RESTORELAND:
 					SelectObject(memDC, hRestoreLand);
 					BitBlt(hdc, i, j,
-						CELLWIDTH, CELLWIDTH, memDC, 0, 0, SRCCOPY);
+						CELL_WIDTH, CELL_WIDTH, memDC, 0, 0, SRCCOPY);
 					break;
 
 				}
@@ -305,33 +315,48 @@ int AnimateMap()
 int DeleteRowCol(int x, int y)
 {
 	int i, j;
-	int **tempMap;
-	tempMap = new int*[mapWidth];
+	MAPTILE **tempMap;
+	tempMap = new MAPTILE*[mapWidth];
 	for(i=0; i<mapWidth; i++)
-		tempMap[i] = new int[mapHeight];
+		tempMap[i] = new MAPTILE[mapHeight];
 
 	for(i=0; i<mapWidth; i++)
 	{
 		for(j=0; j<mapHeight; j++)
-			tempMap[i][j] = editMap[i][j];
+		{
+			tempMap[i][j].landtype = editMap[i][j].landtype;
+			tempMap[i][j].objtype = editMap[i][j].objtype;
+			tempMap[i][j].index = editMap[i][j].index;
+			tempMap[i][j].numFrame = editMap[i][j].numFrame;
+		}
 	}
 	if(x==-1)
 		mapHeight--;
 	else
 		mapWidth--;
 
-	editMap = new int*[mapWidth];
+	editMap = new MAPTILE*[mapWidth];
 	for(i=0; i<mapWidth; i++)
-		editMap[i] = new int[mapHeight];
+		editMap[i] = new MAPTILE[mapHeight];
 
 	if(x == -1)
 	{
 		for(i=0; i<mapWidth; i++)
 		{
 			for(j=0; j<y; j++)
-				editMap[i][j] = tempMap[i][j];
+			{
+				editMap[i][j].landtype = tempMap[i][j].landtype;
+				editMap[i][j].objtype = tempMap[i][j].objtype;
+				editMap[i][j].index = tempMap[i][j].index;
+				editMap[i][j].numFrame = tempMap[i][j].numFrame;
+			}
 			for(j=y; j<mapHeight; j++)
-				editMap[i][j] = tempMap[i][j+1];
+			{
+				editMap[i][j].landtype = tempMap[i][j+1].landtype;
+				editMap[i][j].objtype = tempMap[i][j+1].objtype;
+				editMap[i][j].index = tempMap[i][j+1].index;
+				editMap[i][j].numFrame = tempMap[i][j+1].numFrame;
+			}
 		}
 	}
 	else
@@ -339,9 +364,19 @@ int DeleteRowCol(int x, int y)
 		for(j=0; j<mapHeight; j++)
 		{
 			for(i=0; i<x; i++)
-				editMap[i][j] = tempMap[i][j];
+			{
+				editMap[i][j].landtype = tempMap[i][j].landtype;
+				editMap[i][j].objtype = tempMap[i][j].objtype;
+				editMap[i][j].index = tempMap[i][j].index;
+				editMap[i][j].numFrame = tempMap[i][j].numFrame;
+			}
 			for(i=x; i<mapWidth; i++)
-				editMap[i][j] = tempMap[i+1][j];
+			{
+				editMap[i][j].landtype = tempMap[i+1][j].landtype;
+				editMap[i][j].objtype = tempMap[i+1][j].objtype;
+				editMap[i][j].index = tempMap[i+1][j].index;
+				editMap[i][j].numFrame = tempMap[i+1][j].numFrame;
+			}
 		}
 	}
 
@@ -351,25 +386,25 @@ int DeleteRowCol(int x, int y)
 
 int InsertRowCol(int x, int y)
 {
-	if((curLandscape>=LANDSCAPENUM)||(curLandscape<0))
+	if((curLandscape>=NUM_OF_LANDSCAPES)||(curLandscape<0))
 		MessageBox(hWnd, "Error! Landscape not probably chosen!","Insert Error", MB_OK);
-/*	if (x==-1)
-		sprintf(buf,"Insert Row %d, %d, %d,%d", x,y, insertType,curLandscape);
-	else
-		sprintf(buf,"Insert Col %d, %d, %d,%d", x,y,insertType,curLandscape);
-	MessageBox(hWnd, buf,"",MB_OK);
-*/	int i, j;
-	int **tempMap;
+	int i, j;
+	MAPTILE **tempMap;
 
-	tempMap = new int*[mapWidth];
+	tempMap = new MAPTILE*[mapWidth];
 	for(i=0; i<mapWidth; i++)
-		tempMap[i] = new int[mapHeight];
+		tempMap[i] = new MAPTILE[mapHeight];
 	
 	// copy the original map to tempMap
 	for(i=0; i<mapWidth; i++)
 	{
 		for(j=0; j<mapHeight; j++)
-			tempMap[i][j] = editMap[i][j];
+		{
+			tempMap[i][j].landtype = editMap[i][j].landtype;
+			tempMap[i][j].objtype = editMap[i][j].objtype;
+			tempMap[i][j].index = editMap[i][j].index;
+			tempMap[i][j].numFrame = editMap[i][j].numFrame;
+		}
 	}
 
 	// increment the map height and width
@@ -379,9 +414,9 @@ int InsertRowCol(int x, int y)
 		mapWidth++;
 
 	// initialize the new map
-	editMap = new int*[mapWidth];
+	editMap = new MAPTILE*[mapWidth];
 	for(i=0; i<mapWidth; i++)
-		editMap[i] = new int[mapHeight];
+		editMap[i] = new MAPTILE[mapHeight];
 
 	// copy the data back
 	if(x == -1)
@@ -391,10 +426,26 @@ int InsertRowCol(int x, int y)
 		for(i=0; i<mapWidth; i++)
 		{
 			for(j=0; j<y; j++)
-				editMap[i][j] = tempMap[i][j];
-			editMap[i][y] = curLandscape;
+			{
+				editMap[i][j].landtype = tempMap[i][j].landtype;
+				editMap[i][j].objtype = tempMap[i][j].objtype;
+				editMap[i][j].index = tempMap[i][j].index;
+				editMap[i][j].numFrame = tempMap[i][j].numFrame;
+			}
+			if (curLandscape == WATER)
+				editMap[i][y].numFrame = NUMWATERFRAME;
+			else
+				editMap[i][y].numFrame = 1;
+			editMap[i][y].landtype = curLandscape;
+			editMap[i][y].objtype = 0;
+			editMap[i][y].index = 0;
 			for(j=y+1; j<mapHeight; j++)
-				editMap[i][j] = tempMap[i][j-1];
+			{
+				editMap[i][j].landtype = tempMap[i][j-1].landtype;
+				editMap[i][j].objtype = tempMap[i][j-1].objtype;
+				editMap[i][j].index = tempMap[i][j-1].index;
+				editMap[i][j].numFrame = tempMap[i][j-1].numFrame;
+			}
 		}
 	}
 	else
@@ -405,10 +456,26 @@ int InsertRowCol(int x, int y)
 		for(j=0; j<mapHeight; j++)
 		{
 			for(i=0; i<x; i++)
-				editMap[i][j] = tempMap[i][j];
-			editMap[x][j] = curLandscape;
+			{
+				editMap[i][j].landtype = tempMap[i][j].landtype;
+				editMap[i][j].objtype = tempMap[i][j].objtype;
+				editMap[i][j].index = tempMap[i][j].index;
+				editMap[i][j].numFrame = tempMap[i][j].numFrame;
+			}
+			if (curLandscape == WATER)
+				editMap[x][j].numFrame = NUMWATERFRAME;
+			else
+				editMap[x][j].numFrame = 1;
+			editMap[x][j].landtype = curLandscape;
+			editMap[x][j].objtype = 0;
+			editMap[x][j].index = 0;
 			for(i=x+1; i<mapWidth; i++)
-				editMap[i][j] = tempMap[i-1][j];
+			{
+				editMap[i][j].landtype = tempMap[i-1][j].landtype;
+				editMap[i][j].objtype = tempMap[i-1][j].objtype;
+				editMap[i][j].index = tempMap[i-1][j].index;
+				editMap[i][j].numFrame = tempMap[i-1][j].numFrame;
+			}
 		}
 	}
 
@@ -452,7 +519,7 @@ int WINAPI WinMain(HINSTANCE hThisInst, HINSTANCE hPrevInst,
 		CW_USEDEFAULT,	/* X coordinate - let Windows decide */
 		CW_USEDEFAULT,	/* Y coordinate - let Windows decide */
 		640,	/* width - let Windows decide */
-		480+CELLWIDTH,	/* height - let Windows decide */
+		480+CELL_WIDTH,	/* height - let Windows decide */
 		HWND_DESKTOP,	/* no parent window */
 		NULL,	/* no menu */
 		hThisInst, /* handle of this instance of the program */
@@ -598,8 +665,8 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
 			{
 				mouseX = LOWORD(lParam);
 				mouseY = HIWORD(lParam);
-				ModifyMap(upperLeftCorner[0]+mouseX/CELLWIDTH,
-					upperLeftCorner[1]+mouseY/CELLWIDTH, curLandscape);
+				ModifyMap(upperLeftCorner[0]+mouseX/CELL_WIDTH,
+					upperLeftCorner[1]+mouseY/CELL_WIDTH, curLandscape);
 				InvalidateRect(hwnd, NULL, TRUE);
 			}
 			if (cursorMode == DELETEROW)
@@ -611,7 +678,7 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
 				if(response == IDOK)
 				{
 					DeleteRowCol(-1,
-					upperLeftCorner[1]+mouseY/CELLWIDTH);
+					upperLeftCorner[1]+mouseY/CELL_WIDTH);
 					InvalidateRect(hwnd,NULL,TRUE);
 				}
 			}
@@ -623,7 +690,7 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
 					"Confirm Delete Column", MB_OKCANCEL);
 				if(response == IDOK)
 				{
-					DeleteRowCol(upperLeftCorner[0]+mouseX/CELLWIDTH,
+					DeleteRowCol(upperLeftCorner[0]+mouseX/CELL_WIDTH,
 					-1);
 					InvalidateRect(hwnd,NULL,TRUE);
 				}
@@ -641,7 +708,7 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
 						"Confirm Insert Row", MB_OKCANCEL);
 					if(response == IDOK)
 					{
-						InsertRowCol(-1, upperLeftCorner[1]+mouseY/CELLWIDTH);
+						InsertRowCol(-1, upperLeftCorner[1]+mouseY/CELL_WIDTH);
 						InvalidateRect(hwnd,NULL,TRUE);
 					}
 				}
@@ -659,7 +726,7 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
 						"Confirm Insert Row", MB_OKCANCEL);
 					if(response == IDOK)
 					{
-						InsertRowCol(upperLeftCorner[0]+mouseX/CELLWIDTH, -1);
+						InsertRowCol(upperLeftCorner[0]+mouseX/CELL_WIDTH, -1);
 						InvalidateRect(hwnd,NULL,TRUE);
 					}
 				}
@@ -839,7 +906,7 @@ BOOL CALLBACK CustomDlg(HWND hdwnd, UINT message,
 					land = SendDlgItemMessage(hdwnd, IDC_LIST2,
 										   LB_GETCURSEL, 0, 0L); // get index
 
-					if((fromX<0)||(fromY<0)||(land<0)||(land>LANDSCAPENUM)
+					if((fromX<0)||(fromY<0)||(land<0)||(land>NUM_OF_LANDSCAPES)
 						||(toX>=(mapWidth+1000))||(toY>=(mapHeight+1000)))
 					{
 						MessageBox(hWnd, "Invalid Entry!", "Entry Error", MB_OK);
