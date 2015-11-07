@@ -3,13 +3,6 @@
 //////////////////////////////////////////////////////////////
 //	Known Bugs
 //	
-//	1) If a file is not opened and u try to goto some places,
-//		it won't be working properly.
-//
-//	Bug Solve
-//
-//	1) Add error checking. If mapWidth==0, display map not
-//		initialize message.
 //////////////////////////////////////////////////////////////
 
 #include <windows.h>
@@ -68,7 +61,8 @@ char	szFileName[80];
 char	*sourceDir = "..\\Map\\";
 
 int **editMap;
-int mapWidth=0, mapHeight=0;
+int mapWidth=0; 
+int mapHeight=0;
 int upperLeftCorner[2] = {0,0};
 int widthTile = 16;
 int heightTile = 12;
@@ -453,12 +447,12 @@ int WINAPI WinMain(HINSTANCE hThisInst, HINSTANCE hPrevInst,
 	/* After registering, a window can be created. */
 	hwnd = CreateWindow(
 		szWinName,	/* name of window class */
-		"Map Editor V1.0",	/* title */
+		"Map Editor V2.0",	/* title */
 		WS_OVERLAPPEDWINDOW ^ WS_SIZEBOX,	/* window style - normal */
 		CW_USEDEFAULT,	/* X coordinate - let Windows decide */
 		CW_USEDEFAULT,	/* Y coordinate - let Windows decide */
 		640,	/* width - let Windows decide */
-		480,	/* height - let Windows decide */
+		480+CELLWIDTH,	/* height - let Windows decide */
 		HWND_DESKTOP,	/* no parent window */
 		NULL,	/* no menu */
 		hThisInst, /* handle of this instance of the program */
@@ -517,12 +511,25 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
 				}
 				break;
 			case IDM_OPEN:
+				if((!(mapWidth<=0))&&(!(mapHeight<=0)))
+				{
+					response = MessageBox(hWnd, "Map not yet saved. Save Map?",
+						"Map Not Saved", MB_OKCANCEL);
+					if (response == IDOK)
+						DialogBox(hInst, "FILESAVEDLG", hWnd, (FARPROC)FileSaveDlg);
+				}
+
 				DialogBox(hInst, "FILEOPENDLG", hwnd, (FARPROC)FileOpenDlg);
 				break;
 			case IDM_SAVE:
 				DialogBox(hInst, "FILESAVEDLG", hwnd, (FARPROC)FileSaveDlg);
 				break;
 			case IDM_CUSTOM:
+				if ((mapWidth<=0)||(mapHeight<=0))
+				{
+					MessageBox(hWnd, "Map not opened yet!","Map Error", MB_OK);
+					break;
+				}
 				DialogBox(hInst, "CUSTOMDLG", hwnd, (FARPROC)CustomDlg);
 				break;
 			case IDM_LANDSCAPE:
@@ -532,21 +539,51 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
 				cursorMode = NONEACTIVE;
 				break;
 			case IDM_MODIFY:
+				if ((mapWidth<=0)||(mapHeight<=0))
+				{
+					MessageBox(hWnd, "Map not opened yet!","Map Error", MB_OK);
+					break;
+				}
 				cursorMode = MODIFY;
 				break;
 			case IDM_DELETEROW:
+				if ((mapWidth<=0)||(mapHeight<=0))
+				{
+					MessageBox(hWnd, "Map not opened yet!","Map Error", MB_OK);
+					break;
+				}
 				cursorMode = DELETEROW;
 				break;
 			case IDM_DELETECOL:
+				if ((mapWidth<=0)||(mapHeight<=0))
+				{
+					MessageBox(hWnd, "Map not opened yet!","Map Error", MB_OK);
+					break;
+				}
 				cursorMode = DELETECOL;
 				break;
 			case IDM_INSERTROW:
+				if ((mapWidth<=0)||(mapHeight<=0))
+				{
+					MessageBox(hWnd, "Map not opened yet!","Map Error", MB_OK);
+					break;
+				}
 				cursorMode = INSERTROW;
 				break;
 			case IDM_INSERTCOL:
+				if ((mapWidth<=0)||(mapHeight<=0))
+				{
+					MessageBox(hWnd, "Map not opened yet!","Map Error", MB_OK);
+					break;
+				}
 				cursorMode = INSERTCOL;
 				break;
 			case IDM_GOTO:
+				if ((mapWidth<=0)||(mapHeight<=0))
+				{
+					MessageBox(hWnd, "Map not opened yet!","Map Error", MB_OK);
+					break;
+				}
 				DialogBox(hInst, "GOTODLG", hwnd, (FARPROC)GotoDlg);
 				break;
 			case IDM_HELP:
@@ -630,6 +667,12 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
 
 			break;
 		case WM_KEYDOWN:
+			if ((mapWidth<=0)||(mapHeight<=0))
+			{
+				MessageBox(hWnd, "Map not opened yet!","Map Error", MB_OK);
+				break;
+			}
+
 			switch((int)wParam)
 			{
 			case VK_DOWN:
@@ -659,6 +702,20 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
 				upperLeftCorner[0]++;
 				moveState = RIGHT;
 				AnimateMap();
+				break;
+			case VK_PRIOR:
+/*				if((upperLeftCorner[0]-=16)<0)
+					upperLeftCorner[0] = 0;
+*/				if((upperLeftCorner[1]-=12)<0)
+					upperLeftCorner[1] = 0;
+				InvalidateRect(hWnd, NULL, TRUE);
+				break;
+			case VK_NEXT:
+/*				if((upperLeftCorner[0]+=16)>=mapWidth)
+					upperLeftCorner[0] = mapWidth-1;
+*/				if((upperLeftCorner[1]+=12)>=mapHeight)
+					upperLeftCorner[1] = mapHeight-1;
+				InvalidateRect(hWnd, NULL, TRUE);
 				break;
 			}
 			break;
@@ -765,8 +822,6 @@ BOOL CALLBACK CustomDlg(HWND hdwnd, UINT message,
 					if (HIWORD(wParam) == LBN_DBLCLK) {
 						land = SendDlgItemMessage(hdwnd, IDC_LIST2,
 											   LB_GETCURSEL, 0, 0L); // get index
-//						sprintf(buf, "Index in list is: %d", land);
-//						MessageBox(hdwnd, buf, "Selection Made", MB_OK);
 					}
 					return 1;
 

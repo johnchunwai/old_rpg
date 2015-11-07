@@ -1,4 +1,14 @@
-// WINX.CPP - Game Console Shell
+// RPG.CPP - Game Console Shell
+
+//////////////////////////////////////////////////////////////////
+//
+//	Known Bugs
+//	
+//	1) Lost of surface due to 'Alt-Tab' will cause the system to
+//		hang.
+//
+//////////////////////////////////////////////////////////////////
+
 
 // INCLUDES ///////////////////////////////////////////////
 #define WIN32_LEAN_AND_MEAN  
@@ -17,49 +27,20 @@
 #include <math.h>
 #include <io.h>
 #include <fcntl.h>
+#include <time.h>
 
 #include <ddraw.h>
 
+#include "RPG.h"
 
 // DEFINES ////////////////////////////////////////////////
 
 // defines for windows 
 #define WINDOW_CLASS_NAME "WINXCLASS"  // class name
 
-#define SCREEN_WIDTH  640
-#define SCREEN_HEIGHT 480
-#define SCREEN_BIT	  24
-
-#define CELL_WIDTH	  40
-
-// bitmap defines
-#define BITMAP_ID            0x4D42 // universal id for a bitmap
-
-#define UP		1
-#define DOWN	2
-#define LEFT	3
-#define RIGHT	4
-#define STAY	5
-
-#define DISPLAY_OFFAMOUNT	8
-
-#define NUM_OF_LANDSCAPES	5
-#define GRASS		0
-#define WATER		4
-#define VILLAGE		3
-#define POISONLAND	1
-#define RESTORELAND	2
-
-// MACROS /////////////////////////////////////////////////
-
-// these read the keyboard asynchronously
-#define KEY_DOWN(vk_code) ((GetAsyncKeyState(vk_code) & 0x8000) ? 1 : 0)
-#define KEY_UP(vk_code)   ((GetAsyncKeyState(vk_code) & 0x8000) ? 0 : 1)
-
-#define _RGB24BIT(r, g ,b)  ((b&255)+((g&255)<<8)+((r&255)<<16))
 
 // container structure for bitmaps .BMP file
-typedef struct BITMAP_FILE_TAG
+/*typedef struct BITMAP_FILE_TAG
         {
         BITMAPFILEHEADER bitmapfileheader;  // this contains the bitmapfile header
         BITMAPINFOHEADER bitmapinfoheader;  // this is all the info including the palette
@@ -67,49 +48,21 @@ typedef struct BITMAP_FILE_TAG
         UCHAR            *buffer;           // this is a pointer to the data
 
         } BITMAP_FILE, *BITMAP_FILE_PTR;
-
+*/
 
 // PROTOTYPES /////////////////////////////////////////////
 
 int Game_Init(void *parms=NULL);
 int Game_Shutdown(void *parms=NULL);
 int Game_Main(void *parms=NULL);
+int War_Main(void *parms=NULL);
 
 int CreateOffScreen(LPDIRECTDRAWSURFACE &lpddshello, int pixel_width, int pixel_height);
 
 LPDIRECTDRAWCLIPPER DDAttachClipper(LPDIRECTDRAWSURFACE lpdds, int num_rects, LPRECT clip_list);
 
-// GLOBALS ////////////////////////////////////////////////
 
-HWND main_window_handle = NULL; // save the window handle
-HINSTANCE main_instance = NULL; // save the instance
-char buffer[80];                // used to print text
 
-LPDIRECTDRAW	lpdd;
-DDSURFACEDESC	ddsd;
-DDSCAPS			ddscaps;
-LPDIRECTDRAWSURFACE lpddsprimary,
-				lpddsback;
-LPDIRECTDRAWSURFACE lpddscharacter,
-				lpddsgrass;
-LPDIRECTDRAWCLIPPER	lpddclip;
-DDBLTFX			ddbltfx;
-
-RECT fill_area;
-RECT src_area;
-RECT char_area;
-
-DWORD backgroundIndex = GRASS;
-
-char szWorldMapFile[80] = "..\\Map\\worldMap.dat";
-
-int		charX = 39, charY = 29;	// init position of main character
-int		charDirection = STAY;	// init character direction of moving
-const int repCount = CELL_WIDTH/DISPLAY_OFFAMOUNT;
-int worldMapOffset[2] = {(charX-7), (charY-5)};
-int firstRun = 1;
-int worldMapWidth, worldMapHeight;
-int **worldMap;
 // WINX GAME PROGRAMMING CONSOLE FUNCTIONS ////////////////
 
 int ReadMapFromFile(int **&map, LPSTR szFileName, int &width, int &height)
@@ -199,7 +152,7 @@ DDAttachClipper(LPDIRECTDRAWSURFACE lpdds,
 	free(region_data);
 	return(lpddclipper);
 }	
-int LoadImage(LPDIRECTDRAWSURFACE lpwork, LPSTR szImage, int landscapeIndex)
+int LoadImage(LPDIRECTDRAWSURFACE lpwork, LPSTR szImage, int landscapeIndex, int width, int height)
 {
 	HBITMAP hbm;
 	HDC		hdcImage = NULL;
@@ -222,8 +175,8 @@ int LoadImage(LPDIRECTDRAWSURFACE lpwork, LPSTR szImage, int landscapeIndex)
     }
 
 	hbm = (HBITMAP)LoadImage(NULL, szImage,
-		IMAGE_BITMAP, 40,
-		40, LR_LOADFROMFILE | LR_CREATEDIBSECTION);
+		IMAGE_BITMAP, width,
+		height, LR_LOADFROMFILE | LR_CREATEDIBSECTION);
 	if(hbm==NULL)
 	{
 		MessageBox(main_window_handle, "load","hi",MB_OK);
@@ -239,10 +192,10 @@ int LoadImage(LPDIRECTDRAWSURFACE lpwork, LPSTR szImage, int landscapeIndex)
 		goto Exit;
 	}
 
-	if(BitBlt(hdcSurf, landscapeIndex*CELL_WIDTH, 0, (landscapeIndex+1)*CELL_WIDTH, CELL_WIDTH,
+	if(BitBlt(hdcSurf, landscapeIndex*width, 0, width, height,
 		hdcImage, 0, 0, SRCCOPY) == FALSE)
 	{
-		MessageBox(main_window_handle, "blt","hi",MB_OK);
+		MessageBox(main_window_handle, "blt error","hi",MB_OK);
 		goto Exit;
 	}
 	bReturn = 1;
@@ -273,12 +226,467 @@ int CreateOffScreen(LPDIRECTDRAWSURFACE &lpddshello, int pixel_width, int pixel_
 	return(1);
 }
 
-int CheckWater()
+int CheckLandType(int type)
 {
-	if(worldMap[charX][charY] == WATER)
+	if(worldMap[mainChar[WAI].charPos[X]][mainChar[WAI].charPos[Y]] == type)
 		return(1);
 	else
 		return(0);
+}
+
+int PrintStatus(MAIN_CHAR_PTR character, int x, int y)
+{
+	HDC hdcSurf;
+	if(FAILED(lpddsprimary->GetDC(&hdcSurf)))
+	{
+		return(0);
+	}
+
+	TEXTMETRIC tm;
+	int h;
+	int j = 0;
+	int i;
+	SetTextColor(hdcSurf, RGB(255,255,255));
+	SetBkMode(hdcSurf, TRANSPARENT);
+	GetTextMetrics(hdcSurf, &tm);
+	h = tm.tmHeight + tm.tmExternalLeading;
+
+	TextOut(hdcSurf,x,y+j*h,mainChar[WAI].name,strlen(mainChar[WAI].name));
+	j++;
+	sprintf(buf,"LV: %d   EXP: %d   Gold: %d   Next LV: %d",character->LV,character->exp,character->gold,character->nextLV);
+	TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
+	j++;
+	sprintf(buf, "HP: %d/%d   MP: %d/%d",character->HP,character->maxHP,character->MP,character->maxMP);
+	TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
+	j++;
+	sprintf(buf, "STR: %d   DEX: %d   INT: %d   SPIRIT: %d   CONS: %d",character->STR,character->DEX,character->INT,character->SPIRIT,character->CONS);
+	TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
+	j++;
+	sprintf(buf, "ATK: %d   DEF: %d",character->ATK,character->DEF);
+	TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
+	j++;
+	i = sprintf(buf, "Weapon: +%dAT  Name: ",(character->weapon)->attackPower);
+	sprintf(buf + i, (character->weapon)->name);
+	TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
+	j++;
+	i = sprintf(buf, "Armor: +%dDEF  Name: ",(character->armor)->defPower);
+	sprintf(buf + i, (character->armor)->name);
+	TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
+
+	lpddsprimary->ReleaseDC(hdcSurf);
+
+	return(1);
+}
+
+int OutMessage(int x, int y)
+{
+	HDC hdcSurf;
+	if(FAILED(lpddsprimary->GetDC(&hdcSurf)))
+	{
+		return(0);
+	}
+
+	TEXTMETRIC tm;
+	int h;
+	int j = 0;
+
+	SetTextColor(hdcSurf, RGB(255,255,255));
+	SetBkMode(hdcSurf, TRANSPARENT);
+	GetTextMetrics(hdcSurf, &tm);
+	h = tm.tmHeight + tm.tmExternalLeading;
+
+	sprintf(buf,"A = Attack");
+	TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
+	j++;
+	sprintf(buf, "M = Magic");
+	TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
+	j++;
+	sprintf(buf, "D = Defend");
+	TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
+	j++;
+	sprintf(buf, "I = Item");
+	TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
+	j = 0;
+	x += 200;
+
+	lpddsprimary->ReleaseDC(hdcSurf);
+
+	PrintStatus(mainChar, x, y);
+
+	return(1);
+}
+
+int OutText(char *str)
+{
+	HDC hdcSurf;
+	if(FAILED(lpddsprimary->GetDC(&hdcSurf)))
+	{
+		return(0);
+	}
+
+	TEXTMETRIC tm;
+	int h;
+	int j = 0;
+
+	SetTextColor(hdcSurf, RGB(255,255,255));
+	SetBkMode(hdcSurf, TRANSPARENT);
+	GetTextMetrics(hdcSurf, &tm);
+	h = tm.tmHeight + tm.tmExternalLeading;
+
+	TextOut(hdcSurf,20,290,str,strlen(str));
+
+
+	lpddsprimary->ReleaseDC(hdcSurf);
+
+	return(1);
+
+}
+int WarPrintStatus(int x, int y)
+{
+	HDC hdcSurf;
+	if(FAILED(lpddsprimary->GetDC(&hdcSurf)))
+	{
+		return(0);
+	}
+
+	TEXTMETRIC tm;
+	int h;
+	int j = 0;
+
+	SetTextColor(hdcSurf, RGB(255,255,255));
+	SetBkMode(hdcSurf, TRANSPARENT);
+	GetTextMetrics(hdcSurf, &tm);
+	h = tm.tmHeight + tm.tmExternalLeading;
+
+	TextOut(hdcSurf,x,y+j*h,monster[warMonsterIndex].name,strlen(monster[warMonsterIndex].name));
+	j++;
+	sprintf(buf,"EXP: %d   Gold: %d",monster[warMonsterIndex].exp,monster[warMonsterIndex].gold);
+	TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
+	j++;
+	sprintf(buf, "HP: %d/%d   MP: %d/%d",monster[warMonsterIndex].HP,monster[warMonsterIndex].maxHP,monster[warMonsterIndex].MP,monster[warMonsterIndex].maxMP);
+	TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
+	j++;
+	sprintf(buf, "DEX: %d   INT: %d   SPIRIT: %d",monster[warMonsterIndex].DEX,monster[warMonsterIndex].INT,monster[warMonsterIndex].SPIRIT);
+	TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
+	j++;
+	sprintf(buf, "ATK: %d   DEF: %d",monster[warMonsterIndex].ATK,monster[warMonsterIndex].DEF);
+	TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
+
+	lpddsprimary->ReleaseDC(hdcSurf);
+
+	return(1);
+}
+
+int CharacterMove(int direction, int &displayEffect, int &encounter)
+{
+	if (firstRun)
+	{
+		mainChar[WAI].charDirection = STAY;
+		firstRun = 0;
+		return(1);
+	}
+
+	int xOrY;
+	int plusOrMinus;
+	int limit;
+
+	displayEffect = GRASS;
+	
+	if (direction == UP)
+	{
+		xOrY = Y;
+		plusOrMinus = -1;
+		limit = 5;
+	} 
+	else if (direction == DOWN)
+	{
+		xOrY = Y;
+		plusOrMinus = 1;
+		limit = worldMapHeight-7;
+	}
+	else if (direction == RIGHT)
+	{
+		xOrY = X;
+		plusOrMinus = 1;
+		limit = worldMapWidth-9;
+	}
+	else if(direction == LEFT)
+	{
+		xOrY = X;
+		plusOrMinus = -1;
+		limit = 7;
+	}
+
+	if(mainChar[WAI].charPos[xOrY] == limit)
+		return(0);
+
+	mainChar[WAI].charPos[xOrY]+=plusOrMinus;
+
+	if(CheckLandType(WATER))
+	{
+		mainChar[WAI].charPos[xOrY]-=plusOrMinus;
+		return(0);
+	}
+
+	if (mainChar[WAI].state != DEAD)
+	{
+		encounter = ((rand()%9) == 1);
+		if (encounter)
+			warMonsterIndex = rand()%2;
+		if(CheckLandType(RESTORELAND))
+		{
+			mainChar[WAI].HP = mainChar[WAI].maxHP;
+			displayEffect = RESTORELAND;
+		}
+		if(CheckLandType(POISONLAND))
+		{
+			mainChar[WAI].HP--;
+			if(mainChar[WAI].HP == 0)
+			{
+				mainChar[WAI].state = DEAD;
+				charIndex = DEADCHAR;
+			}
+			displayEffect = POISONLAND;
+		}
+	}
+
+	worldMapOffset[xOrY]+=plusOrMinus;
+	mainChar[WAI].charDirection = direction;	
+
+	return(1);
+}
+
+int FromWarZoneToWorldZone()
+{
+	firstRun = 1;
+
+	zone = WORLDZONE;
+	if (mainChar[WAI].state == ALIVE)
+		charIndex = MAINCHAR;
+	if (mainChar[WAI].state == DEAD)
+		charIndex = DEADCHAR;
+	src_area.bottom = CELL_WIDTH;
+
+	return(1);
+}
+
+int CharBeforeMonster(int dex1, int dex2)
+{
+	int charDex, monsterDex;
+	charDex = rand()%6+1*dex1;
+	monsterDex = rand()%6+1*dex2;
+
+	return (charDex > monsterDex);
+}
+
+int MonsterAction(int index)
+{
+	if(!monster[index].MP)
+		return ATTACK;
+	else
+		return (rand()%2);
+}
+
+int FightOneRound()
+{
+	int hurt;
+	if(warTurn[0] == MONSTERTURN)
+	{
+		warTurn[1] = warMonsterIndex;
+		if (monster[warTurn[1]].warAction == ATTACK)
+		{
+			if ((hurt = (monster[warTurn[1]].ATK/5*(rand()%5+1) - (mainChar[WAI].DEF/5*(rand()%2+1)))) < 0)
+				hurt = 0;
+			mainChar[WAI].HP-=hurt;
+			sprintf(buf, "%s hits %s by %d points", monster[warTurn[1]].name, mainChar[WAI].name, hurt);
+
+			if(mainChar[WAI].HP <= 0)
+			{
+				mainChar[WAI].HP = 0;
+				mainChar[WAI].state = DEAD;
+				warOver = MONSTERWIN;
+			}
+		}
+		warTurn[0] = CHARTURN;
+	}
+	else if (warTurn[0] == CHARTURN)
+	{
+		warTurn[2] = warMonsterIndex;
+		if (mainChar[WAI].warAction == ATTACK)
+		{
+			if ((hurt = (mainChar[WAI].ATK/5*(rand()%5+1) - (monster[warTurn[2]].DEF/5*(rand()%2+1)))) < 0)
+				hurt = 0;
+			monster[warTurn[2]].HP-=hurt;
+			sprintf(buf, "%s hits %s by %d points", mainChar[WAI].name, monster[warTurn[1]].name, hurt);
+			if(monster[warTurn[2]].HP <= 0)
+			{
+				monster[warTurn[2]].HP = 0;
+				monster[warTurn[2]].state = DEAD;
+				warOver = CHARWIN;
+			}
+		}
+		else if (mainChar[WAI].warAction == DEFEND)
+		{
+			mainChar[WAI].DEF = (mainChar[WAI].DEF)<<1;
+			sprintf(buf, "%s's defense doubles!", mainChar[WAI].name);
+		}
+		warTurn[0] = MONSTERTURN;
+	}
+	if ((hitCount == 1) && (mainChar[WAI].warAction == DEFEND))
+		mainChar[WAI].DEF = (mainChar[WAI].DEF)>>1;
+
+	OutText(buf);
+	Sleep(30);
+	return(1);
+}
+
+int War_Main(void *parms)
+{
+	if(warOver)
+	{
+		if (warOver == CHARWIN)
+		{
+			monster[warMonsterIndex].HP = monster[warMonsterIndex].maxHP;
+			mainChar[WAI].exp += monster[warMonsterIndex].exp;
+			mainChar[WAI].nextLV -= monster[warMonsterIndex].exp;
+			if (mainChar[WAI].nextLV <= 0)
+			{
+				mainChar[WAI].LV++;
+				OutText("LEVEL UP!");
+			}
+			mainChar[WAI].gold += monster[warMonsterIndex].gold;
+		}
+		warOver = NOTFINISHED;
+		hitCount = 0;
+		FromWarZoneToWorldZone();
+		return(1);
+	}
+
+	if (!startBattle)
+	{
+	while(!hitCount)
+	{
+		if (KEY_DOWN('A'))
+		{
+			hitCount = 2;
+			mainChar[WAI].warAction = ATTACK;
+			monster[warMonsterIndex].warAction = MonsterAction(warMonsterIndex);
+			warTurn[0] = CharBeforeMonster(mainChar[WAI].DEX, monster[warMonsterIndex].DEX);
+		}
+/*		else if (KEY_DOWN('M'))
+		{
+			mainChar[WAI].warAction = MAGIC;
+			monster[warMonsterIndex].warAction = MonsterAction(warMonsterIndex);
+			warTurn[0] = CharBeforeMonster(mainChar[WAI].DEX, monster[warMonsterIndex].DEX);
+		}
+*/		else if (KEY_DOWN('D'))
+		{
+			hitCount = 2;
+			mainChar[WAI].warAction = DEFEND;
+			monster[warMonsterIndex].warAction = MonsterAction(warMonsterIndex);
+			warTurn[0] = CharBeforeMonster(mainChar[WAI].DEX, monster[warMonsterIndex].DEX);
+		}
+/*		else if (KEY_DOWN('I'))
+		{
+			mainChar[WAI].warAction = ITEM;
+			monster[warMonsterIndex].warAction = MonsterAction(warMonsterIndex);
+			warTurn[0] = CharBeforeMonster(mainChar[WAI].DEX, monster[warMonsterIndex].DEX);
+		}
+*/	}
+	}
+	else
+	{
+		startBattle = 0;
+	}
+
+	if(hitCount)
+	{
+		FightOneRound();
+		hitCount--;
+	}
+	
+	if (KEY_DOWN(VK_DOWN))
+	{
+		FromWarZoneToWorldZone();
+		return(1);
+	}
+/*	else
+	{
+		if (!startBattle)
+			return(1);
+		startBattle = 0;
+	}
+*/
+	ZeroMemory(&ddbltfx, sizeof(ddbltfx));
+	ddbltfx.dwSize = sizeof(ddbltfx);
+	ddbltfx.dwFillColor = _RGB24BIT(0, 0, 0);
+
+	lpddsback->Blt(NULL, 
+		NULL, 
+		NULL, 
+		DDBLT_COLORFILL | DDBLT_WAIT, 
+		&ddbltfx);
+
+	warSrcArea.left = BACKGROUNDWIDTH*backgroundIndex;
+	warSrcArea.right = BACKGROUNDWIDTH+warSrcArea.left;
+
+	lpddsback->Blt(&fill_area,
+		lpddsbackground,
+		&warSrcArea,
+		DDBLT_WAIT,
+		NULL);
+
+	lpddsback->Blt(&(mainChar[WAI].warCharArea),
+		mainChar[WAI].lpddsbattlechar,
+		&src_area,
+		DDBLT_WAIT|DDBLT_KEYSRC,
+		NULL);
+
+	lpddsback->Blt(&(monster[warMonsterIndex].warMonsterArea),
+		monster[warMonsterIndex].lpddswarmonster,
+		&(monster[warMonsterIndex].srcArea),
+		DDBLT_WAIT|DDBLT_KEYSRC,
+		NULL);
+
+	while(lpddsprimary->Flip(NULL, DDFLIP_WAIT)!=DD_OK);
+
+	OutMessage(20,330);
+	if(!WarPrintStatus(260, 20))
+		return (0);
+
+	Sleep(30);
+	return(1);
+}
+
+int FromWorldZoneToWarZone()
+{
+	startBattle = 1;
+	zone = WARZONE;
+	if (mainChar[WAI].state == ALIVE)
+		warCharIndex = WARMAINCHAR;
+	if (mainChar[WAI].state == DEAD)
+		warCharIndex = WARDEADCHAR;
+	src_area.left = (warCharIndex<<3)+(warCharIndex<<5);
+	src_area.right = src_area.left+WARCHARWIDTH;
+	src_area.bottom = WARCHARHEIGHT;
+
+	fill_area.left = 0;
+	fill_area.top = 0;
+	fill_area.right = 640;
+	fill_area.bottom = 320;
+	
+	if (CheckLandType(GRASS))
+		backgroundIndex = GRASSBG;
+	else if(CheckLandType(VILLAGE))
+		backgroundIndex = GRASSBG;
+	else if(CheckLandType(POISONLAND))
+		backgroundIndex = POISONLANDBG;
+	else if(CheckLandType(RESTORELAND))
+		backgroundIndex = RESTORELANDBG;
+	else
+		return(0);
+
+	return(1);
 }
 
 int Game_Main(void *parms)
@@ -289,66 +697,45 @@ int Game_Main(void *parms)
 
 // your code goes here
 	int strangeTemp[2] = {0,0};
+	int specialEffect = GRASS;
+	int encounter = 0;
+
 	if (KEY_DOWN(VK_ESCAPE))
 		PostMessage(main_window_handle, WM_DESTROY,0,0);
 
+	if (KEY_DOWN('S'))
+	{
+		if(!PrintStatus(mainChar, 40, 40))
+			return (0);
+	}
+
 	if (KEY_DOWN(VK_UP))
 	{
-		if(charY == 5)
+		if(!CharacterMove(UP, specialEffect, encounter))
 			return(1);
-		charY--;
-		if(CheckWater())
-		{
-			charY++;
-			return(1);
-		}
-		worldMapOffset[1]--;
-		charDirection = UP;	
 	}
+	
 	else if(KEY_DOWN(VK_DOWN))
 	{
-		if(charY == (worldMapHeight-7))
+		if(!CharacterMove(DOWN, specialEffect, encounter))
 			return(1);
-		charY++;
-		if(CheckWater())
-		{
-			charY--;
-			return(1);
-		}
-		worldMapOffset[1]++;
-		charDirection = DOWN;	
 	}
 	else if(KEY_DOWN(VK_RIGHT))
 	{
-		if(charX == (worldMapWidth-9))
+		if(!CharacterMove(RIGHT, specialEffect, encounter))
 			return(1);
-		charX++;
-		if(CheckWater())
-		{
-			charX--;
-			return(1);
-		}
-		worldMapOffset[0]++;
-		charDirection = RIGHT;	
 	}
 	else if(KEY_DOWN(VK_LEFT))
 	{
-		if(charX == 7)
-			return(0);
-		charX--;
-		if(CheckWater())
-		{
-			charX++;
+		if(!CharacterMove(LEFT, specialEffect, encounter))
 			return(1);
-		}
-		worldMapOffset[0]--;
-		charDirection = LEFT;	
 	}
 	else
 	{
-		charDirection = STAY;
+		mainChar[WAI].charDirection = STAY;
 		if (!firstRun)
 			return(1);
+		specialEffect = GRASS;
 		firstRun = 0;
 	}
 
@@ -385,28 +772,28 @@ int Game_Main(void *parms)
 	int horizontalDisplayOffset = 0;
 	int initHoriDisplay = 0;	
 
-	switch(charDirection) {
+	switch(mainChar[WAI].charDirection) {
 	case DOWN:
-//		if(charDirection == DOWN) 
-		strangeTemp[1] = -1;
+//		if(mainChar[WAI].charDirection == DOWN) 
+		strangeTemp[Y] = -1;
 		verticalDisplayOffset = -DISPLAY_OFFAMOUNT;
 		initVertDisplay = -DISPLAY_OFFAMOUNT;
 		break;
 	case UP:
-//			if(charDirection == UP)
+//			if(mainChar[WAI].charDirection == UP)
 //		strangeTemp = 0;
 		verticalDisplayOffset = DISPLAY_OFFAMOUNT;
 		initVertDisplay = verticalDisplayOffset-CELL_WIDTH;
 		break;
 	case LEFT:
-//		if(charDirection == LEFT)
+//		if(mainChar[WAI].charDirection == LEFT)
 //		strangeTemp = 0;
 		horizontalDisplayOffset = DISPLAY_OFFAMOUNT;
 		initHoriDisplay = horizontalDisplayOffset-CELL_WIDTH;
 		break;
 	case RIGHT:
-//		if(charDirection == RIGHT
-		strangeTemp[0] = -1;
+//		if(mainChar[WAI].charDirection == RIGHT
+		strangeTemp[X] = -1;
 		horizontalDisplayOffset = -DISPLAY_OFFAMOUNT;
 		initHoriDisplay = -DISPLAY_OFFAMOUNT;
 		break;
@@ -440,58 +827,85 @@ int Game_Main(void *parms)
 			DDBLT_COLORFILL | DDBLT_WAIT, 
 			&ddbltfx);
 */
-		for (int i=initVertDisplay; i<SCREEN_HEIGHT; i+=CELL_WIDTH)
+		if(((rep == (repCount-2))||(rep == repCount-3)) && (specialEffect!=GRASS))
 		{
-			for (int j=initHoriDisplay; j<SCREEN_WIDTH; j+=CELL_WIDTH)
+			if(specialEffect == POISONLAND)
 			{
-				fill_area.top = i;
-				fill_area.left = j;
-				fill_area.bottom = i+CELL_WIDTH;
-				fill_area.right = j+CELL_WIDTH;
-				
-				backgroundIndex = worldMap[worldMapOffset[0]+(j-initHoriDisplay)/CELL_WIDTH+strangeTemp[0]][worldMapOffset[1]+(i-initVertDisplay)/CELL_WIDTH+strangeTemp[1]];
-				src_area.left = (backgroundIndex<<3)+(backgroundIndex<<5);
-				src_area.right = src_area.left+CELL_WIDTH;
-		
-				lpddsback->Blt(&fill_area,
-					lpddsgrass,
-					&src_area,
-					DDBLT_WAIT,
-					NULL);
+				ZeroMemory(&ddbltfx, sizeof(ddbltfx));
+				ddbltfx.dwSize = sizeof(ddbltfx);
+				ddbltfx.dwFillColor = _RGB24BIT(215,34,38);
+
+				lpddsback->Blt(NULL, 
+				NULL, 
+				NULL, 
+				DDBLT_COLORFILL | DDBLT_WAIT, 
+				&ddbltfx);
+			}
+			else if(specialEffect == RESTORELAND)
+			{
+				ZeroMemory(&ddbltfx, sizeof(ddbltfx));
+				ddbltfx.dwSize = sizeof(ddbltfx);
+				ddbltfx.dwFillColor = _RGB24BIT(35, 122, 228);
+
+				lpddsback->Blt(NULL, 
+				NULL, 
+				NULL, 
+				DDBLT_COLORFILL | DDBLT_WAIT, 
+				&ddbltfx);
 			}
 		}
+		else
+		{
+			for (int i=initVertDisplay; i<SCREEN_HEIGHT; i+=CELL_WIDTH)
+			{
+				for (int j=initHoriDisplay; j<SCREEN_WIDTH; j+=CELL_WIDTH)
+				{
+					fill_area.top = i;
+					fill_area.left = j;
+					fill_area.bottom = i+CELL_WIDTH;
+					fill_area.right = j+CELL_WIDTH;
+					
+					grassIndex = worldMap[worldMapOffset[0]+(j-initHoriDisplay)/CELL_WIDTH+strangeTemp[0]][worldMapOffset[1]+(i-initVertDisplay)/CELL_WIDTH+strangeTemp[1]];
+					src_area.left = (grassIndex<<3)+(grassIndex<<5);
+					src_area.right = src_area.left+CELL_WIDTH;
+		
+					lpddsback->Blt(&fill_area,
+						lpddsgrass,
+						&src_area,
+						DDBLT_WAIT,
+						NULL);
+				}
+			}
 /*		fill_area.top = 200;
 		fill_area.left = 280;
 		fill_area.bottom = 240;
 		fill_area.right = 320;
 */
-		lpddsback->Blt(&char_area,//280,200,
-		lpddscharacter,
-		NULL,
-		DDBLT_WAIT|DDBLT_KEYSRC,
-		//DDBLTFAST_WAIT | DDBLTFAST_SRCCOLORKEY);
-		NULL);
+			src_area.left = (charIndex<<3)+(charIndex<<5);
+			src_area.right = src_area.left+CELL_WIDTH;
+	
+			lpddsback->Blt(&(mainChar[WAI].worldCharArea),//280,200,
+			mainChar[WAI].lpddscharacter,
+			&src_area,
+			DDBLT_WAIT|DDBLT_KEYSRC,
+			//DDBLTFAST_WAIT | DDBLTFAST_SRCCOLORKEY);
+			NULL);
+		}
 
 		initHoriDisplay+=horizontalDisplayOffset;
 		initVertDisplay+=verticalDisplayOffset;
 		//////////////////////////////////////
-		lpdd->WaitForVerticalBlank(DDWAITVB_BLOCKBEGIN,0);
+//		lpdd->WaitForVerticalBlank(DDWAITVB_BLOCKBEGIN,0); // slows down so much with this
 
 		while(lpddsprimary->Flip(NULL, DDFLIP_WAIT)!=DD_OK);
 
 //		Sleep(500);
 	}
 
-
-
-
-/*	lpddsback->Blt(&fill_area,
-		lpddscharacter,
-		NULL,
-		DDBLT_WAIT | DDBLT_KEYSRC,
-		NULL);
-*/
-
+	if(encounter)
+	{
+		FromWorldZoneToWarZone();
+	}
 
 	Sleep(30);
 	// return success
@@ -499,21 +913,209 @@ int Game_Main(void *parms)
 }
  // end Game_Main
 
+int WeaponInit()
+{
+	///////////////////////////////////////////////////////
+	// SET weapon attributes
+	///////////////////////////////////////////////////////
+	weaponList[BAREHAND].attackPower = 0;
+	sprintf(weaponList[BAREHAND].name, "");
+	weaponList[CLUB].attackPower = 2;
+	sprintf(weaponList[CLUB].name, "Club");
 
+	return(1);
+}
+
+int ArmorInit()
+{
+	///////////////////////////////////////////////////////
+	// SET armor attributes
+	///////////////////////////////////////////////////////
+	armorList[NOARMOR].defPower = 0;
+	sprintf(armorList[NOARMOR].name, "");
+	armorList[CLOTHCLOTHES].defPower = 2;
+	sprintf(armorList[CLOTHCLOTHES].name, "Cloth Clothes");
+
+	return(1);
+}
+
+int CharacterInit()
+{
+	///////////////////////////////////////////////////////
+	// SET main character attributes
+	///////////////////////////////////////////////////////
+	mainChar = new MAIN_CHAR[NUMCHAR];
+
+	sprintf(mainChar[WAI].name, "Wai");
+	mainChar[WAI].charPos[X] = 39;
+	mainChar[WAI].charPos[Y] = 29;
+	mainChar[WAI].charDirection = STAY;
+
+	mainChar[WAI].state = ALIVE;
+	mainChar[WAI].LV = 1;
+	mainChar[WAI].exp = 0;
+	mainChar[WAI].gold = 80;
+	mainChar[WAI].nextLV = 6;
+
+	mainChar[WAI].maxHP = 15;
+	mainChar[WAI].HP = 15;
+	mainChar[WAI].maxMP = 3;
+	mainChar[WAI].MP = 3;
+	mainChar[WAI].STR = 12;
+	mainChar[WAI].DEX = 10;
+	mainChar[WAI].INT = 8;
+	mainChar[WAI].SPIRIT = 8;
+	mainChar[WAI].CONS = 10;
+
+//	mainChar[WAI].weapon = new WEAPON;
+	mainChar[WAI].weapon = &(weaponList[CLUB]);
+	mainChar[WAI].armor = &(armorList[CLOTHCLOTHES]);
+
+	mainChar[WAI].ATK = mainChar[WAI].STR/2 + (mainChar[WAI].weapon)->attackPower;
+	mainChar[WAI].DEF = mainChar[WAI].DEX/2 + (mainChar[WAI].armor)->defPower;
+
+	(mainChar[WAI].worldCharArea).top = 200;
+	(mainChar[WAI].worldCharArea).left = 280;
+	(mainChar[WAI].worldCharArea).bottom = 240;
+	(mainChar[WAI].worldCharArea).right = 320;
+
+	(mainChar[WAI].warCharArea).top = 200;
+	(mainChar[WAI].warCharArea).left = 560;
+	(mainChar[WAI].warCharArea).bottom = 280;
+	(mainChar[WAI].warCharArea).right = 600;
+
+	return(1);
+}
+
+int MonsterInit()
+{
+	///////////////////////////////////////////////////////
+	// SET monsters attributes
+	///////////////////////////////////////////////////////
+	monster = new MONSTER[NUMMONSTER];
+
+	sprintf(monster[MECAR].name, "Car of Me");
+
+	monster[MECAR].state = ALIVE;
+
+	monster[MECAR].exp = 1;
+	monster[MECAR].gold = 5;
+
+	monster[MECAR].maxHP = 7;
+	monster[MECAR].HP = 7;
+	monster[MECAR].maxMP = 0;
+	monster[MECAR].MP = 0;
+	monster[MECAR].DEX = 8;
+	monster[MECAR].INT = 2;
+	monster[MECAR].SPIRIT = 1;
+
+	monster[MECAR].ATK = 7;
+	monster[MECAR].DEF = 3;
+
+	(monster[MECAR].warMonsterArea).top = 200;
+	(monster[MECAR].warMonsterArea).left = 80;
+	(monster[MECAR].warMonsterArea).bottom = 280;
+	(monster[MECAR].warMonsterArea).right = 120;
+
+	sprintf(monster[BIRD].name, "Killer Bird");
+
+	monster[BIRD].state = ALIVE;
+
+	monster[BIRD].exp = 1;
+	monster[BIRD].gold = 7;
+
+	monster[BIRD].maxHP = 9;
+	monster[BIRD].HP = 9;
+	monster[BIRD].maxMP = 0;
+	monster[BIRD].MP = 0;
+	monster[BIRD].DEX = 9;
+	monster[BIRD].INT = 2;
+	monster[BIRD].SPIRIT = 1;
+
+	monster[BIRD].ATK = 6;
+	monster[BIRD].DEF = 3;
+
+	(monster[BIRD].warMonsterArea).top = 100;
+	(monster[BIRD].warMonsterArea).left = 80;
+	(monster[BIRD].warMonsterArea).bottom = 180;
+	(monster[BIRD].warMonsterArea).right = 120;
+
+	for(int i=0; i<NUMMONSTER; i++)
+	{
+		monster[i].srcArea.left = 0;
+		monster[i].srcArea.right = WARCHARWIDTH;
+		monster[i].srcArea.top = 0;
+		monster[i].srcArea.bottom = WARCHARHEIGHT;
+	}
+	return(1);
+}
+
+
+int InitBitmap()
+{
+	if(!LoadImage(mainChar[WAI].lpddscharacter, "..\\Bitmaps\\Characters\\RPGmainChar.bmp",MAINCHAR,CELL_WIDTH,CELL_WIDTH))
+		return(0);
+	if(!LoadImage(mainChar[WAI].lpddscharacter, "..\\Bitmaps\\Characters\\deadChar.bmp",DEADCHAR,CELL_WIDTH,CELL_WIDTH))
+		return(0);
+	if(!LoadImage(mainChar[WAI].lpddsbattlechar, "..\\Bitmaps\\WarCharacters\\mainChar.bmp",WARMAINCHAR,WARCHARWIDTH,WARCHARHEIGHT))
+		return(0);
+	if(!LoadImage(mainChar[WAI].lpddsbattlechar, "..\\Bitmaps\\WarCharacters\\mainChar.bmp",WARDEADCHAR,WARCHARWIDTH,WARCHARHEIGHT))
+		return(0);
+
+	if(!LoadImage(lpddsgrass, "..\\Bitmaps\\Landscapes\\grassLand.bmp",GRASS,CELL_WIDTH,CELL_WIDTH))
+		return(0);
+	if(!LoadImage(lpddsgrass, "..\\Bitmaps\\Landscapes\\water.bmp",WATER,CELL_WIDTH,CELL_WIDTH))
+		return(0);
+	if(!LoadImage(lpddsgrass, "..\\Bitmaps\\Landscapes\\village.bmp",VILLAGE,CELL_WIDTH,CELL_WIDTH))
+		return(0);
+	if(!LoadImage(lpddsgrass, "..\\Bitmaps\\Landscapes\\poisonLand.bmp",POISONLAND,CELL_WIDTH,CELL_WIDTH))
+		return(0);
+	if(!LoadImage(lpddsgrass, "..\\Bitmaps\\Landscapes\\restoreLand.bmp",RESTORELAND,CELL_WIDTH,CELL_WIDTH))
+		return(0);
+
+	if(!LoadImage(lpddsbackground, "..\\Bitmaps\\Backgrounds\\grass.bmp",GRASSBG,BACKGROUNDWIDTH,BACKGROUNDHEIGHT))
+		return(0);
+	if(!LoadImage(lpddsbackground, "..\\Bitmaps\\Backgrounds\\try.bmp",POISONLANDBG,BACKGROUNDWIDTH,BACKGROUNDHEIGHT))
+		return(0);
+	if(!LoadImage(lpddsbackground, "..\\Bitmaps\\Backgrounds\\restore.bmp",RESTORELANDBG,BACKGROUNDWIDTH,BACKGROUNDHEIGHT))
+		return(0);
+
+	if(!LoadImage(monster[MECAR].lpddswarmonster, "..\\Bitmaps\\Monsters\\meCar.bmp",NORMALMONSTER,WARCHARWIDTH,WARCHARHEIGHT))
+		return(0);
+	if(!LoadImage(monster[BIRD].lpddswarmonster, "..\\Bitmaps\\Monsters\\bird.bmp",NORMALMONSTER,WARCHARWIDTH,WARCHARHEIGHT))
+		return(0);
+	
+	return(1);
+}
+
+///////////////////////////////////////////////////////////////////
+//
+//	Game_Init()
+//
+///////////////////////////////////////////////////////////////////
 int Game_Init(void *parms)
 {
+	// initialize variables
+	WeaponInit();
+
+	ArmorInit();
+	
+	CharacterInit();
+
+	MonsterInit();
+
+	///////////////////////////////////////////////////////
+	// Initialize map data
+	///////////////////////////////////////////////////////
+	worldMapOffset[0] = mainChar[WAI].charPos[X]-7;
+	worldMapOffset[1] = mainChar[WAI].charPos[Y]-5;
+
 // this function is where you do all the initialization 
 // for your game
 	
 	// try outputing the map to a file
 	if(!ReadMapFromFile(worldMap, szWorldMapFile, worldMapWidth, worldMapHeight))
 		return(0);
-
-	char_area.top = 200;
-	char_area.left = 280;
-	char_area.bottom = 240;
-	char_area.right = 320;
-
 
 
 // your code goes here
@@ -539,45 +1141,30 @@ int Game_Init(void *parms)
 	if(lpddsprimary->GetAttachedSurface(&ddscaps, &lpddsback)!=DD_OK)
 		return(0);
 
-	//////////////////////////////// OFFSCREEN SURFACE///////////////////
- /*   ddsd.dwFlags = DDSD_CAPS | DDSD_HEIGHT | 
-		           DDSD_WIDTH | DDSD_CKSRCBLT; 
-    ddsd.ddsCaps.dwCaps = DDSCAPS_OFFSCREENPLAIN; 
-    ddsd.dwHeight = 40; 
-    ddsd.dwWidth = 40;
-    // Set the source color key to green.
-    ddsd.ddckCKSrcBlt.dwColorSpaceLowValue = _RGB24BIT(255,255,255);
-    ddsd.ddckCKSrcBlt.dwColorSpaceHighValue = _RGB24BIT(255,255,255);
-
-    if ( FAILED( lpdd->CreateSurface( &ddsd, &lpddscharacter, NULL ) ) )
-		return(0);
-
-*/  
 	if(!CreateOffScreen(lpddsgrass, NUM_OF_LANDSCAPES*CELL_WIDTH, CELL_WIDTH))
 		return(0);
+	if(!CreateOffScreen(lpddsbackground, NUMOFBACKGROUNDS*BACKGROUNDWIDTH, BACKGROUNDHEIGHT))
+		return(0);
 
-
-	if(!CreateOffScreen(lpddscharacter, CELL_WIDTH, CELL_WIDTH))
+	if(!CreateOffScreen(mainChar[WAI].lpddscharacter, NUMCHARMAPS*CELL_WIDTH, CELL_WIDTH))
+		return(0);
+	if(!CreateOffScreen(mainChar[WAI].lpddsbattlechar, NUMWARCHARMAPS*WARCHARWIDTH, WARCHARHEIGHT))
+		return(0);
+	if(!CreateOffScreen(monster[MECAR].lpddswarmonster, NUMWARCHARMAPS*WARCHARWIDTH, WARCHARHEIGHT))
+		return(0);
+	if(!CreateOffScreen(monster[BIRD].lpddswarmonster, NUMWARCHARMAPS*WARCHARWIDTH, WARCHARHEIGHT))
 		return(0);
 
 	DDCOLORKEY	key;
 	key.dwColorSpaceLowValue = _RGB24BIT(1,1,1);//1;
 //	key.dwColorSpaceHighValue = 1;//_RGB24BIT(255,255,255);//(1,1,1);
-	lpddscharacter->SetColorKey(DDCKEY_SRCBLT, &key);
-//	lpddsgrass->SetColorKey(DDCKEY_SRCBLT, &key);
+	(mainChar[WAI].lpddscharacter)->SetColorKey(DDCKEY_SRCBLT, &key);
+	(mainChar[WAI].lpddsbattlechar)->SetColorKey(DDCKEY_SRCBLT, &key);
+	(monster[MECAR].lpddswarmonster)->SetColorKey(DDCKEY_SRCBLT, &key);
+	(monster[BIRD].lpddswarmonster)->SetColorKey(DDCKEY_SRCBLT, &key);
 
 	/////////////// LOADING BITMAPS //////////////////////////
-	if(!LoadImage(lpddscharacter, "..\\Bitmaps\\Characters\\RPGmainChar.bmp",0))
-		return(0);
-	if(!LoadImage(lpddsgrass, "..\\Bitmaps\\Landscapes\\grassLand.bmp",GRASS))
-		return(0);
-	if(!LoadImage(lpddsgrass, "..\\Bitmaps\\Landscapes\\water.bmp",WATER))
-		return(0);
-	if(!LoadImage(lpddsgrass, "..\\Bitmaps\\Landscapes\\village.bmp",VILLAGE))
-		return(0);
-	if(!LoadImage(lpddsgrass, "..\\Bitmaps\\Landscapes\\poisonLand.bmp",POISONLAND))
-		return(0);
-	if(!LoadImage(lpddsgrass, "..\\Bitmaps\\Landscapes\\restoreLand.bmp",RESTORELAND))
+	if(!InitBitmap())
 		return(0);
 
 	RECT cliplist[1] = {{0,0,SCREEN_WIDTH, SCREEN_HEIGHT}};
@@ -587,6 +1174,8 @@ int Game_Init(void *parms)
 
 	src_area.top = 0;
 	src_area.bottom = CELL_WIDTH;
+	warSrcArea.top = 0;
+	warSrcArea.bottom = BACKGROUNDHEIGHT;
 	// return success
 	return(1);
 } // end Game_Init
@@ -599,8 +1188,17 @@ int Game_Shutdown(void *parms)
 // release all resources that you allocated
 
 // your code goes here
-	if (lpddscharacter)
-		lpddscharacter->Release();
+	if (mainChar[WAI].lpddscharacter)
+		(mainChar[WAI].lpddscharacter)->Release();
+	if (mainChar[WAI].lpddsbattlechar)
+		(mainChar[WAI].lpddsbattlechar)->Release();
+	for (int i=0; i<NUMMONSTER; i++)
+	{
+		if (monster[i].lpddswarmonster)
+			(monster[i].lpddswarmonster)->Release();
+	}
+	if (lpddsbackground)
+		lpddsbackground->Release();
 	if (lpddsgrass)
 		lpddsgrass->Release();
 	if (lpddsprimary)
@@ -691,7 +1289,7 @@ if (!RegisterClass(&winclass))
 
 // create the window
 if (!(hwnd = CreateWindow(WINDOW_CLASS_NAME, // class
-						  "WinX Game Console",	 // title
+						  "RPG V2.0",	 // title
 						  WS_POPUP | WS_VISIBLE,
 					 	  0,0,	   // x,y
 						  SCREEN_WIDTH,  // width
@@ -702,7 +1300,7 @@ if (!(hwnd = CreateWindow(WINDOW_CLASS_NAME, // class
 						  NULL)))	// creation parms
 return(0);
 
-ShowCursor(FALSE);
+//ShowCursor(FALSE);
 // save the window handle and instance in a global
 main_window_handle = hwnd;
 main_instance      = hinstance;
@@ -730,7 +1328,10 @@ while(1)
 		} // end if
     
     // main game processing goes here
-    Game_Main();
+	if(zone == WORLDZONE)
+	    Game_Main();
+	else if(zone == WARZONE)
+		War_Main();
 
 	} // end while
 
