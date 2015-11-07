@@ -8,6 +8,10 @@
 #define WARCHARWIDTH		40
 #define WARCHARHEIGHT		80
 
+#define WARMONSTERWIDTH		40
+#define WARMONSTERHEIGHT	80
+
+
 // bitmap defines
 #define BITMAP_ID            0x4D42 // universal id for a bitmap
 
@@ -27,8 +31,11 @@
 #define WARMAINCHAR	0
 #define WARDEADCHAR	1
 
-#define CHARTURN	0
-#define MONSTERTURN	1
+#define MONSTER1TURN	0
+#define MONSTER2TURN	1
+#define MONSTER3TURN	2
+#define CHARTURN		3
+
 #define NOONE		2	// used by WarMain's turn[]
 
 #define NUM_OF_LANDSCAPES	5
@@ -65,19 +72,22 @@
 #define	WORLDZONE	0
 #define WARZONE		1
 
+#define MAXMONSTERINWAR	3
 #define NUMMONSTER	2
 #define MECAR	0
 #define BIRD	1
+#define DEADMONSTER	5
 
 #define NUMCHAR	1
 #define	WAI		0
 
-#define NUMMONSTERMAP	1
+#define NUMMONSTERMAPS	1
 #define NORMALMONSTER	0
 
 #define NOTFINISHED	0
 #define CHARWIN		1
 #define	MONSTERWIN	2
+
 
 // MACROS /////////////////////////////////////////////////
 
@@ -136,7 +146,7 @@ typedef struct MAIN_CHAR_TAG
 	RECT worldCharArea;
 	RECT warCharArea;
 
-	int warAction;
+	int warAction[3]; //[0] what action; [1] whom to apply; [2] with what;
 
 }	MAIN_CHAR, *MAIN_CHAR_PTR;
 
@@ -145,15 +155,13 @@ typedef struct MONSTER_TAG
 	char name[30];
 //	int id; // who this guy is
 			// for weapon and armor
-	int state;	// ALIVE, DEAD
-
 //	int LV;
 	DWORD exp;
 	DWORD gold;
 //	DWORD nextLV;	// exp needed for next LV
 
-	int HP, maxHP;
-	int MP, maxMP;
+	int maxHP;
+	int maxMP;
 //	int STR;
 	int DEX;
 	int INT;
@@ -178,7 +186,10 @@ typedef struct MONSTER_TAG
 //	RECT worldCharArea;
 	RECT warMonsterArea;
 
-	int warAction;
+	int HP;
+	int MP;
+	int state;	// ALIVE, DEAD
+	int warAction[3];
 
 }	MONSTER, *MONSTER_PTR;
 
@@ -196,6 +207,8 @@ LPDIRECTDRAWSURFACE lpddsprimary,
 				lpddsback;
 LPDIRECTDRAWSURFACE lpddsgrass;
 LPDIRECTDRAWSURFACE lpddsbackground;
+LPDIRECTDRAWSURFACE lpddswarmonster[NUMMONSTER];
+
 LPDIRECTDRAWCLIPPER	lpddclip;
 DDBLTFX			ddbltfx;
 
@@ -208,12 +221,12 @@ DWORD grassIndex = GRASS;
 DWORD backgroundIndex = GRASSBG;
 DWORD charIndex = MAINCHAR;
 DWORD warCharIndex;
-DWORD warMonsterIndex;
+DWORD warMonsterIndex[3];
 
 char szWorldMapFile[80] = "..\\Map\\worldMap.dat";
 
 
-MONSTER_PTR monster;
+MONSTER **monster;
 MAIN_CHAR_PTR mainChar;
 WEAPON weaponList[20];	// weapon list
 ARMOR armorList[20];	// armor list
@@ -231,8 +244,9 @@ char buf[500];
 int zone = WORLDZONE;
 
 int hitCount = 0;	// 0: stop fighting; 1: 1 hit left; 2: 2 hits left
-int warTurn[3];	// turn[0]:char or enemy; turn[1]:which monster
-					// turn[1] is not being used yet.
-					// 0 is character's turn. 1 is monster's turn.
-					// turn[3] is to fight who
+int warTurn[4];		// whose turn on [i]th turnCount respectively
+int turnCount = 0;	// which turn in the round
 int warOver = 0;	// 0 not finished. 1 char war. 2 monster win.
+RECT warMessageBox;
+int numMonsterInWar;
+int numMonsterDead;		// number of monster died in the war

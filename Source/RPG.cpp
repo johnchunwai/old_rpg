@@ -316,7 +316,7 @@ int OutMessage(int x, int y)
 	return(1);
 }
 
-int OutText(char *str)
+int OutText(char *str, int x, int y)
 {
 	HDC hdcSurf;
 	if(FAILED(lpddsprimary->GetDC(&hdcSurf)))
@@ -333,7 +333,7 @@ int OutText(char *str)
 	GetTextMetrics(hdcSurf, &tm);
 	h = tm.tmHeight + tm.tmExternalLeading;
 
-	TextOut(hdcSurf,20,290,str,strlen(str));
+	TextOut(hdcSurf,x,y,str,strlen(str));
 
 
 	lpddsprimary->ReleaseDC(hdcSurf);
@@ -341,7 +341,9 @@ int OutText(char *str)
 	return(1);
 
 }
-int WarPrintStatus(int x, int y)
+
+// this prints numToPrint Monsters' statuses on screen
+int WarPrintStatus(int x, int y, int numToPrint)
 {
 	HDC hdcSurf;
 	if(FAILED(lpddsprimary->GetDC(&hdcSurf)))
@@ -358,20 +360,23 @@ int WarPrintStatus(int x, int y)
 	GetTextMetrics(hdcSurf, &tm);
 	h = tm.tmHeight + tm.tmExternalLeading;
 
-	TextOut(hdcSurf,x,y+j*h,monster[warMonsterIndex].name,strlen(monster[warMonsterIndex].name));
-	j++;
-	sprintf(buf,"EXP: %d   Gold: %d",monster[warMonsterIndex].exp,monster[warMonsterIndex].gold);
-	TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
-	j++;
-	sprintf(buf, "HP: %d/%d   MP: %d/%d",monster[warMonsterIndex].HP,monster[warMonsterIndex].maxHP,monster[warMonsterIndex].MP,monster[warMonsterIndex].maxMP);
-	TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
-	j++;
-	sprintf(buf, "DEX: %d   INT: %d   SPIRIT: %d",monster[warMonsterIndex].DEX,monster[warMonsterIndex].INT,monster[warMonsterIndex].SPIRIT);
-	TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
-	j++;
-	sprintf(buf, "ATK: %d   DEF: %d",monster[warMonsterIndex].ATK,monster[warMonsterIndex].DEF);
-	TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
-
+	for (int i=0; i<numToPrint; i++)
+	{
+		TextOut(hdcSurf,x,y+j*h,monster[warMonsterIndex[i]][i].name,strlen(monster[warMonsterIndex[i]][i].name));
+		j++;
+		sprintf(buf,"EXP: %d   Gold: %d",monster[warMonsterIndex[i]][i].exp,monster[warMonsterIndex[i]][i].gold);
+		TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
+		j++;
+		sprintf(buf, "HP: %d/%d   MP: %d/%d",monster[warMonsterIndex[i]][i].HP,monster[warMonsterIndex[i]][i].maxHP,monster[warMonsterIndex[i]][i].MP,monster[warMonsterIndex[i]][i].maxMP);
+		TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
+		j++;
+		sprintf(buf, "DEX: %d   INT: %d   SPIRIT: %d",monster[warMonsterIndex[i]][i].DEX,monster[warMonsterIndex[i]][i].INT,monster[warMonsterIndex[i]][i].SPIRIT);
+		TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
+		j++;
+		sprintf(buf, "ATK: %d   DEF: %d",monster[warMonsterIndex[i]][i].ATK,monster[warMonsterIndex[i]][i].DEF);
+		TextOut(hdcSurf,x,y+j*h,buf,strlen(buf));
+		x += 150;
+	}
 	lpddsprimary->ReleaseDC(hdcSurf);
 
 	return(1);
@@ -430,9 +435,17 @@ int CharacterMove(int direction, int &displayEffect, int &encounter)
 
 	if (mainChar[WAI].state != DEAD)
 	{
+//		srand((unsigned)time(NULL));
 		encounter = ((rand()%9) == 1);
 		if (encounter)
-			warMonsterIndex = rand()%2;
+		{
+			numMonsterInWar = rand()%3+1;
+			int i;
+			for (i=0; i<numMonsterInWar; i++)
+				warMonsterIndex[i] = rand()%2;
+			for (i=numMonsterInWar; i<MAXMONSTERINWAR; i++)
+				warMonsterIndex[i] = DEADMONSTER;
+		}
 		if(CheckLandType(RESTORELAND))
 		{
 			mainChar[WAI].HP = mainChar[WAI].maxHP;
@@ -470,158 +483,259 @@ int FromWarZoneToWorldZone()
 	return(1);
 }
 
-int CharBeforeMonster(int dex1, int dex2)
+// HARD CODE FOR NOW
+int WhoseTurn()
 {
-	int charDex, monsterDex;
+	warTurn[0] = CHARTURN;
+	warTurn[1] = MONSTER1TURN;
+	warTurn[2] = MONSTER2TURN;
+	warTurn[3] = MONSTER3TURN;
+	return(1);
+/*	int charDex, monsterDex;
 	charDex = rand()%6+1*dex1;
 	monsterDex = rand()%6+1*dex2;
 
-	return (charDex > monsterDex);
+	return (charDex > monsterDex);*/
 }
 
-int MonsterAction(int index)
+// HARD CODE FOR NOW
+int MonsterAction()
 {
-	if(!monster[index].MP)
-		return ATTACK;
-	else
-		return (rand()%2);
+	int i;
+	int action;
+	for (i=0; i<numMonsterInWar; i++)
+	{
+		if (warMonsterIndex[i] != DEADMONSTER)
+		{
+			monster[warMonsterIndex[i]][i].warAction[0] = ATTACK;
+			monster[warMonsterIndex[i]][i].warAction[1] = WAI;
+		}
+	}
+/*	action = rand()%3;
+	if(action!=MAGIC)
+		monster[index][which].warAction[0] = action;
+	else if(!monster[index][which].MP)
+		monster[index][which].warAction[0] = ATTACK;
+	if (monster[index][which].warAction == ATTACK)
+		// HARD CODE FOR NOW
+		monster[index][which].warAction[1] = WAI;
+*/	return(1);
+}
+
+int CharLevelUP(int who)
+{
+	mainChar[who].nextLV = (mainChar[who].nextLV + mainChar[who].nextLV/2);
+	mainChar[who].LV++;
+	sprintf(buf,"LEVEL UP!");
+	lpddsprimary->Blt(&warMessageBox, 
+		NULL, 
+		NULL, 
+		DDBLT_COLORFILL | DDBLT_WAIT, 
+		&ddbltfx);
+		OutMessage(20,330);
+		int keyTemp = 0;
+				
+	while(!keyTemp)
+	{
+		if(KEY_DOWN('A') || KEY_DOWN('M')||KEY_DOWN('D')||KEY_DOWN('I')||KEY_DOWN(VK_SPACE)||KEY_DOWN(VK_RETURN))
+			keyTemp = 1;
+	}
+	
+	return(1);
+}
+
+int CharKillMonster(int whichChar, int whichMonster)
+{
+	monster[warMonsterIndex[whichMonster]][whichMonster].HP = monster[warMonsterIndex[whichMonster]][whichMonster].maxHP;
+	monster[warMonsterIndex[whichMonster]][whichMonster].MP = monster[warMonsterIndex[whichMonster]][whichMonster].maxMP;
+	monster[warMonsterIndex[whichMonster]][whichMonster].state = ALIVE;
+	mainChar[whichChar].exp += monster[warMonsterIndex[whichMonster]][whichMonster].exp;
+	mainChar[whichChar].gold += monster[warMonsterIndex[whichMonster]][whichMonster].gold;
+	warMonsterIndex[whichMonster] = DEADMONSTER;
+
+	numMonsterDead++;
+
+	if (mainChar[whichChar].exp >= mainChar[whichChar].nextLV)
+	{
+		CharLevelUP(whichChar);
+	}
+
+	return(1);
 }
 
 int FightOneRound()
 {
 	int hurt;
-	if(warTurn[0] == MONSTERTURN)
-	{
-		warTurn[1] = warMonsterIndex;
-		if (monster[warTurn[1]].warAction == ATTACK)
-		{
-			if ((hurt = (monster[warTurn[1]].ATK/5*(rand()%5+1) - (mainChar[WAI].DEF/5*(rand()%2+1)))) < 0)
-				hurt = 0;
-			mainChar[WAI].HP-=hurt;
-			sprintf(buf, "%s hits %s by %d points", monster[warTurn[1]].name, mainChar[WAI].name, hurt);
 
-			if(mainChar[WAI].HP <= 0)
+	int index;	// index of active character or monster
+	int target;
+
+	int i;
+
+	sprintf(buf,"");
+
+	if(warTurn[turnCount] <= MONSTER3TURN)
+	{
+		index = warTurn[turnCount];
+		if (warMonsterIndex[index] != DEADMONSTER)
+		{
+			if (monster[warMonsterIndex[index]][index].warAction[0] == ATTACK)
 			{
-				mainChar[WAI].HP = 0;
-				mainChar[WAI].state = DEAD;
-				warOver = MONSTERWIN;
+				target = monster[warMonsterIndex[index]][index].warAction[1];
+				if ((hurt = (monster[warMonsterIndex[index]][index].ATK/5*(rand()%5+1) - (mainChar[target].DEF/5*(rand()%2+1)))) < 0)
+					hurt = 0;
+				mainChar[target].HP-=hurt;
+				sprintf(buf, "%s hits %s by %d points", monster[warMonsterIndex[index]][index].name, mainChar[target].name, hurt);
+
+				if(mainChar[target].HP <= 0)
+				{
+					mainChar[target].HP = 0;
+					mainChar[target].state = DEAD;
+					warOver = MONSTERWIN;
+				}
+			}
+/*			else if (monster[warMonsterIndex[index]][index].warAction[0] == DEFEND)
+			{
+				monster[warMonsterIndex[index]][index].DEF = (monster[warMonsterIndex[index]][index].DEF)<<1;
+				sprintf(buf, "%s's defense doubles!", monster[warMonsterIndex[index]][index].name);
+			}
+*/		}
+/*		else
+		{
+			// in case the dead monster chooses defend
+			monster[warMonsterIndex[index]][index].warAction[0] == ATTACK;
+		}
+*/	}
+	else if (warTurn[turnCount] > MONSTER3TURN)
+	{
+		index = warTurn[turnCount] - CHARTURN;
+		if (mainChar[index].warAction[0] == ATTACK)
+		{
+			target = mainChar[index].warAction[1];
+			if (warMonsterIndex[target] != DEADMONSTER)
+			{
+				if ((hurt = (mainChar[index].ATK/5*(rand()%5+1) - (monster[warMonsterIndex[target]][target].DEF/5*(rand()%2+1)))) < 0)
+					hurt = 0;
+				monster[warMonsterIndex[target]][target].HP-=hurt;
+				sprintf(buf, "%s hits %s by %d points", mainChar[index].name, monster[warMonsterIndex[target]][target].name, hurt);
+				if(monster[warMonsterIndex[target]][target].HP <= 0)
+				{
+					CharKillMonster(index, target);
+
+					if (numMonsterInWar == numMonsterDead)
+						warOver = CHARWIN;
+				}
 			}
 		}
-		warTurn[0] = CHARTURN;
-	}
-	else if (warTurn[0] == CHARTURN)
-	{
-		warTurn[2] = warMonsterIndex;
-		if (mainChar[WAI].warAction == ATTACK)
+/*		else if (mainChar[index].warAction[0] == DEFEND)
 		{
-			if ((hurt = (mainChar[WAI].ATK/5*(rand()%5+1) - (monster[warTurn[2]].DEF/5*(rand()%2+1)))) < 0)
-				hurt = 0;
-			monster[warTurn[2]].HP-=hurt;
-			sprintf(buf, "%s hits %s by %d points", mainChar[WAI].name, monster[warTurn[1]].name, hurt);
-			if(monster[warTurn[2]].HP <= 0)
-			{
-				monster[warTurn[2]].HP = 0;
-				monster[warTurn[2]].state = DEAD;
-				warOver = CHARWIN;
-			}
+			mainChar[index].DEF = (mainChar[index].DEF)<<1;
+			sprintf(buf, "%s's defense doubles!", mainChar[index].name);
 		}
-		else if (mainChar[WAI].warAction == DEFEND)
-		{
-			mainChar[WAI].DEF = (mainChar[WAI].DEF)<<1;
-			sprintf(buf, "%s's defense doubles!", mainChar[WAI].name);
-		}
-		warTurn[0] = MONSTERTURN;
-	}
-	if ((hitCount == 1) && (mainChar[WAI].warAction == DEFEND))
-		mainChar[WAI].DEF = (mainChar[WAI].DEF)>>1;
+*/	}
 
-	OutText(buf);
-	Sleep(30);
+/*	for (i=0; i<NUMCHAR; i++)
+	{
+		if ((hitCount == 1) && (mainChar[i].warAction[0] == DEFEND))
+			mainChar[i].DEF = (mainChar[i].DEF)>>1;
+	}
+	for (i=0; i<NUMMONSTER; i++)
+	{
+		if ((hitCount == 1) && (monster[warMonsterIndex[i]][i].warAction[0] == DEFEND))
+			monster[warMonsterIndex[i]][i].DEF = (monster[warMonsterIndex[i]][i].DEF)>>1;
+	}
+*/
+	OutText(buf,20,290);
+
+	int keyTemp = 0;
+	Sleep(200);	// wait until the key state changes back to up.
+	while(!keyTemp)
+	{
+		if(KEY_DOWN('A') || KEY_DOWN('M')||KEY_DOWN('D')||KEY_DOWN('I')||KEY_DOWN(VK_SPACE)||KEY_DOWN(VK_RETURN))
+			keyTemp = 1;
+	}
+	
+//	warOver = CHARWIN;
 	return(1);
 }
 
 int War_Main(void *parms)
 {
+	int i;
 	if(warOver)
 	{
-		if (warOver == CHARWIN)
-		{
-			monster[warMonsterIndex].HP = monster[warMonsterIndex].maxHP;
-			mainChar[WAI].exp += monster[warMonsterIndex].exp;
-			mainChar[WAI].nextLV -= monster[warMonsterIndex].exp;
-			if (mainChar[WAI].nextLV <= 0)
-			{
-				mainChar[WAI].LV++;
-				OutText("LEVEL UP!");
-			}
-			mainChar[WAI].gold += monster[warMonsterIndex].gold;
-		}
-		warOver = NOTFINISHED;
-		hitCount = 0;
 		FromWarZoneToWorldZone();
 		return(1);
 	}
 
 	if (!startBattle)
 	{
-	while(!hitCount)
-	{
-		if (KEY_DOWN('A'))
+		while(!hitCount)
 		{
-			hitCount = 2;
-			mainChar[WAI].warAction = ATTACK;
-			monster[warMonsterIndex].warAction = MonsterAction(warMonsterIndex);
-			warTurn[0] = CharBeforeMonster(mainChar[WAI].DEX, monster[warMonsterIndex].DEX);
-		}
-/*		else if (KEY_DOWN('M'))
+			if (KEY_DOWN('A'))
+			{
+				hitCount = numMonsterInWar+1;
+				turnCount = 0;
+				mainChar[WAI].warAction[0] = ATTACK;
+				// hard code for now
+				for (i=0; i<numMonsterInWar; i++)
+				{
+					if (warMonsterIndex[i] != DEADMONSTER)
+					{
+						mainChar[WAI].warAction[1] = i;
+						break;
+					}
+				}
+				MonsterAction();
+				WhoseTurn();
+			}
+	/*		else if (KEY_DOWN('M'))
+			{
+				mainChar[WAI].warAction = MAGIC;
+				monster[warMonsterIndex].warAction = MonsterAction(warMonsterIndex);
+				warTurn[0] = CharBeforeMonster(mainChar[WAI].DEX, monster[warMonsterIndex].DEX);
+			}
+	*//*		else if (KEY_DOWN('D'))
+			{
+				hitCount = numMonsterInWar;
+				turnCount = 0;
+				mainChar[WAI].warAction[0] = DEFEND;
+				for (i=0; i<numMonsterInWar; i++)
+				{
+					MonsterAction(warMonsterIndex[i], i);
+				}
+				WhoseTurn();
+			}
+*/	/*		else if (KEY_DOWN('I'))
+			{
+				mainChar[WAI].warAction = ITEM;
+				monster[warMonsterIndex].warAction = MonsterAction(warMonsterIndex);
+				warTurn[0] = CharBeforeMonster(mainChar[WAI].DEX, monster[warMonsterIndex].DEX);
+			}
+	*/	}
+		if (KEY_DOWN('Q'))
 		{
-			mainChar[WAI].warAction = MAGIC;
-			monster[warMonsterIndex].warAction = MonsterAction(warMonsterIndex);
-			warTurn[0] = CharBeforeMonster(mainChar[WAI].DEX, monster[warMonsterIndex].DEX);
+			FromWarZoneToWorldZone();
+			return(1);
 		}
-*/		else if (KEY_DOWN('D'))
-		{
-			hitCount = 2;
-			mainChar[WAI].warAction = DEFEND;
-			monster[warMonsterIndex].warAction = MonsterAction(warMonsterIndex);
-			warTurn[0] = CharBeforeMonster(mainChar[WAI].DEX, monster[warMonsterIndex].DEX);
-		}
-/*		else if (KEY_DOWN('I'))
-		{
-			mainChar[WAI].warAction = ITEM;
-			monster[warMonsterIndex].warAction = MonsterAction(warMonsterIndex);
-			warTurn[0] = CharBeforeMonster(mainChar[WAI].DEX, monster[warMonsterIndex].DEX);
-		}
-*/	}
 	}
 	else
 	{
-		startBattle = 0;
+		startBattle = 0;	// do the init display
 	}
 
 	if(hitCount)
 	{
 		FightOneRound();
 		hitCount--;
+		turnCount++;
 	}
 	
-	if (KEY_DOWN(VK_DOWN))
-	{
-		FromWarZoneToWorldZone();
-		return(1);
-	}
-/*	else
-	{
-		if (!startBattle)
-			return(1);
-		startBattle = 0;
-	}
-*/
 	ZeroMemory(&ddbltfx, sizeof(ddbltfx));
 	ddbltfx.dwSize = sizeof(ddbltfx);
 	ddbltfx.dwFillColor = _RGB24BIT(0, 0, 0);
 
-	lpddsback->Blt(NULL, 
+	lpddsback->Blt(&warMessageBox, 
 		NULL, 
 		NULL, 
 		DDBLT_COLORFILL | DDBLT_WAIT, 
@@ -642,16 +756,21 @@ int War_Main(void *parms)
 		DDBLT_WAIT|DDBLT_KEYSRC,
 		NULL);
 
-	lpddsback->Blt(&(monster[warMonsterIndex].warMonsterArea),
-		monster[warMonsterIndex].lpddswarmonster,
-		&(monster[warMonsterIndex].srcArea),
-		DDBLT_WAIT|DDBLT_KEYSRC,
-		NULL);
+	for(i=0; i<numMonsterInWar; i++)
+	{
+		if (warMonsterIndex[i] != DEADMONSTER)
+		{
+			lpddsback->Blt(&(monster[warMonsterIndex[i]][i].warMonsterArea),
+				monster[warMonsterIndex[i]][i].lpddswarmonster,
+				&(monster[warMonsterIndex[i]][i].srcArea),
+				DDBLT_WAIT|DDBLT_KEYSRC,
+				NULL);
+		}
+	}
 
 	while(lpddsprimary->Flip(NULL, DDFLIP_WAIT)!=DD_OK);
-
 	OutMessage(20,330);
-	if(!WarPrintStatus(260, 20))
+	if(!WarPrintStatus(20, 20, numMonsterInWar))
 		return (0);
 
 	Sleep(30);
@@ -661,6 +780,10 @@ int War_Main(void *parms)
 int FromWorldZoneToWarZone()
 {
 	startBattle = 1;
+	warOver = NOTFINISHED;
+	hitCount = 0;
+	numMonsterDead = 0;
+
 	zone = WARZONE;
 	if (mainChar[WAI].state == ALIVE)
 		warCharIndex = WARMAINCHAR;
@@ -953,7 +1076,7 @@ int CharacterInit()
 
 	mainChar[WAI].state = ALIVE;
 	mainChar[WAI].LV = 1;
-	mainChar[WAI].exp = 0;
+	mainChar[WAI].exp = 4;
 	mainChar[WAI].gold = 80;
 	mainChar[WAI].nextLV = 6;
 
@@ -989,63 +1112,72 @@ int CharacterInit()
 
 int MonsterInit()
 {
+	int i, j;
 	///////////////////////////////////////////////////////
 	// SET monsters attributes
 	///////////////////////////////////////////////////////
-	monster = new MONSTER[NUMMONSTER];
+	monster = new MONSTER*[NUMMONSTER];
+	for(i=0; i<NUMMONSTER; i++)
+		monster[i] = new MONSTER[MAXMONSTERINWAR];
 
-	sprintf(monster[MECAR].name, "Car of Me");
-
-	monster[MECAR].state = ALIVE;
-
-	monster[MECAR].exp = 1;
-	monster[MECAR].gold = 5;
-
-	monster[MECAR].maxHP = 7;
-	monster[MECAR].HP = 7;
-	monster[MECAR].maxMP = 0;
-	monster[MECAR].MP = 0;
-	monster[MECAR].DEX = 8;
-	monster[MECAR].INT = 2;
-	monster[MECAR].SPIRIT = 1;
-
-	monster[MECAR].ATK = 7;
-	monster[MECAR].DEF = 3;
-
-	(monster[MECAR].warMonsterArea).top = 200;
-	(monster[MECAR].warMonsterArea).left = 80;
-	(monster[MECAR].warMonsterArea).bottom = 280;
-	(monster[MECAR].warMonsterArea).right = 120;
-
-	sprintf(monster[BIRD].name, "Killer Bird");
-
-	monster[BIRD].state = ALIVE;
-
-	monster[BIRD].exp = 1;
-	monster[BIRD].gold = 7;
-
-	monster[BIRD].maxHP = 9;
-	monster[BIRD].HP = 9;
-	monster[BIRD].maxMP = 0;
-	monster[BIRD].MP = 0;
-	monster[BIRD].DEX = 9;
-	monster[BIRD].INT = 2;
-	monster[BIRD].SPIRIT = 1;
-
-	monster[BIRD].ATK = 6;
-	monster[BIRD].DEF = 3;
-
-	(monster[BIRD].warMonsterArea).top = 100;
-	(monster[BIRD].warMonsterArea).left = 80;
-	(monster[BIRD].warMonsterArea).bottom = 180;
-	(monster[BIRD].warMonsterArea).right = 120;
-
-	for(int i=0; i<NUMMONSTER; i++)
+	for (i=0; i<MAXMONSTERINWAR; i++)
 	{
-		monster[i].srcArea.left = 0;
-		monster[i].srcArea.right = WARCHARWIDTH;
-		monster[i].srcArea.top = 0;
-		monster[i].srcArea.bottom = WARCHARHEIGHT;
+		sprintf(monster[MECAR][i].name, "Car of Me %d", i+1);
+
+		monster[MECAR][i].exp = 1;
+		monster[MECAR][i].gold = 5;
+
+		monster[MECAR][i].maxHP = 7;
+		monster[MECAR][i].HP = 7;
+		monster[MECAR][i].maxMP = 0;
+		monster[MECAR][i].MP = 0;
+		monster[MECAR][i].DEX = 8;
+		monster[MECAR][i].INT = 2;
+		monster[MECAR][i].SPIRIT = 1;
+
+		monster[MECAR][i].ATK = 7;
+		monster[MECAR][i].DEF = 3;
+
+		sprintf(monster[BIRD][i].name, "Killer Bird %d", i+1);
+
+		monster[BIRD][i].exp = 1;
+		monster[BIRD][i].gold = 7;
+
+		monster[BIRD][i].maxHP = 9;
+		monster[BIRD][i].HP = 9;
+		monster[BIRD][i].maxMP = 0;
+		monster[BIRD][i].MP = 0;
+		monster[BIRD][i].DEX = 9;
+		monster[BIRD][i].INT = 2;
+		monster[BIRD][i].SPIRIT = 1;
+
+		monster[BIRD][i].ATK = 6;
+		monster[BIRD][i].DEF = 3;
+
+	}
+
+	for (j=0; j<NUMMONSTER; j++)
+	{
+		for (i=0; i<MAXMONSTERINWAR; i++)
+		{
+			monster[j][i].srcArea.left = 0;
+			monster[j][i].srcArea.right = WARMONSTERWIDTH;
+			monster[j][i].srcArea.top = 0;
+			monster[j][i].srcArea.bottom = WARMONSTERHEIGHT;
+
+			monster[j][i].state = ALIVE;
+
+			(monster[j][i].warMonsterArea).right = 220 - (i*70);
+			(monster[j][i].warMonsterArea).left = (monster[j][i].warMonsterArea).right-WARMONSTERWIDTH;
+
+			if(i == 0)
+				(monster[j][i].warMonsterArea).top = 150;
+			else if(i == 1)
+				(monster[j][i].warMonsterArea).top = 220;
+			else if(i==2)
+				(monster[j][i].warMonsterArea).top = 80;
+			(monster[j][i].warMonsterArea).bottom = (monster[j][i].warMonsterArea).top+WARMONSTERHEIGHT;
+		}
 	}
 	return(1);
 }
@@ -1080,9 +1212,9 @@ int InitBitmap()
 	if(!LoadImage(lpddsbackground, "..\\Bitmaps\\Backgrounds\\restore.bmp",RESTORELANDBG,BACKGROUNDWIDTH,BACKGROUNDHEIGHT))
 		return(0);
 
-	if(!LoadImage(monster[MECAR].lpddswarmonster, "..\\Bitmaps\\Monsters\\meCar.bmp",NORMALMONSTER,WARCHARWIDTH,WARCHARHEIGHT))
+	if(!LoadImage(lpddswarmonster[MECAR], "..\\Bitmaps\\Monsters\\meCar.bmp",NORMALMONSTER,WARMONSTERWIDTH,WARMONSTERHEIGHT))
 		return(0);
-	if(!LoadImage(monster[BIRD].lpddswarmonster, "..\\Bitmaps\\Monsters\\bird.bmp",NORMALMONSTER,WARCHARWIDTH,WARCHARHEIGHT))
+	if(!LoadImage(lpddswarmonster[BIRD], "..\\Bitmaps\\Monsters\\bird.bmp",NORMALMONSTER,WARMONSTERWIDTH,WARMONSTERHEIGHT))
 		return(0);
 	
 	return(1);
@@ -1150,18 +1282,25 @@ int Game_Init(void *parms)
 		return(0);
 	if(!CreateOffScreen(mainChar[WAI].lpddsbattlechar, NUMWARCHARMAPS*WARCHARWIDTH, WARCHARHEIGHT))
 		return(0);
-	if(!CreateOffScreen(monster[MECAR].lpddswarmonster, NUMWARCHARMAPS*WARCHARWIDTH, WARCHARHEIGHT))
+	if(!CreateOffScreen(lpddswarmonster[MECAR], NUMMONSTERMAPS*WARMONSTERWIDTH, WARMONSTERHEIGHT))
 		return(0);
-	if(!CreateOffScreen(monster[BIRD].lpddswarmonster, NUMWARCHARMAPS*WARCHARWIDTH, WARCHARHEIGHT))
+	if(!CreateOffScreen(lpddswarmonster[BIRD], NUMMONSTERMAPS*WARMONSTERWIDTH, WARMONSTERHEIGHT))
 		return(0);
+	for (int i=0; i<NUMMONSTER; i++)
+	{
+		for (int j=0; j<MAXMONSTERINWAR; j++)
+		{
+			monster[i][j].lpddswarmonster = lpddswarmonster[i];
+		}
+	}
 
 	DDCOLORKEY	key;
 	key.dwColorSpaceLowValue = _RGB24BIT(1,1,1);//1;
 //	key.dwColorSpaceHighValue = 1;//_RGB24BIT(255,255,255);//(1,1,1);
 	(mainChar[WAI].lpddscharacter)->SetColorKey(DDCKEY_SRCBLT, &key);
 	(mainChar[WAI].lpddsbattlechar)->SetColorKey(DDCKEY_SRCBLT, &key);
-	(monster[MECAR].lpddswarmonster)->SetColorKey(DDCKEY_SRCBLT, &key);
-	(monster[BIRD].lpddswarmonster)->SetColorKey(DDCKEY_SRCBLT, &key);
+	(lpddswarmonster[MECAR])->SetColorKey(DDCKEY_SRCBLT, &key);
+	(lpddswarmonster[BIRD])->SetColorKey(DDCKEY_SRCBLT, &key);
 
 	/////////////// LOADING BITMAPS //////////////////////////
 	if(!InitBitmap())
@@ -1176,6 +1315,11 @@ int Game_Init(void *parms)
 	src_area.bottom = CELL_WIDTH;
 	warSrcArea.top = 0;
 	warSrcArea.bottom = BACKGROUNDHEIGHT;
+
+	warMessageBox.top = 320;
+	warMessageBox.bottom = SCREEN_HEIGHT;
+	warMessageBox.left = 0;
+	warMessageBox.right = SCREEN_WIDTH;
 	// return success
 	return(1);
 } // end Game_Init
@@ -1188,14 +1332,15 @@ int Game_Shutdown(void *parms)
 // release all resources that you allocated
 
 // your code goes here
+	int i;
 	if (mainChar[WAI].lpddscharacter)
 		(mainChar[WAI].lpddscharacter)->Release();
 	if (mainChar[WAI].lpddsbattlechar)
 		(mainChar[WAI].lpddsbattlechar)->Release();
-	for (int i=0; i<NUMMONSTER; i++)
+	for (i=0; i<NUMMONSTER; i++)
 	{
-		if (monster[i].lpddswarmonster)
-			(monster[i].lpddswarmonster)->Release();
+		if (lpddswarmonster[i])
+			lpddswarmonster[i]->Release();
 	}
 	if (lpddsbackground)
 		lpddsbackground->Release();
